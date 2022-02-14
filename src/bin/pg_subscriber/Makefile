@@ -1,6 +1,6 @@
 # src/bin/pg_subscriber/Makefile
 
-PGFILEDESC = "pg_subscriber - create a new logical replica from a base backup"
+PGFILEDESC = "pg_subscriber - create a new logical replica from a base backup or a standby server"
 PGAPPICON=win32
 
 subdir = src/bin/pg_subscriber
@@ -16,7 +16,7 @@ OBJS = \
 
 all: pg_subscriber
 
-pg_subscriber: $(OBJS) | submake-libpgport submake-libpgport submake-libpgfeutils
+pg_subscriber: $(OBJS) | submake-libpq submake-libpgport submake-libpgfeutils
 	$(CC) $(CFLAGS) $^ $(LDFLAGS) $(LDFLAGS_EX) $(LIBS) -o $@$(X)
 
 install: all installdirs
