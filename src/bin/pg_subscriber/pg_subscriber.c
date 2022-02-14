@@ -276,7 +276,7 @@ get_sysid_from_conn(const char *conninfo)
 	if (verbose)
 		pg_log_info("getting system identifier from publisher");
 
-	repconninfo = psprintf("%s replication=1", conninfo);
+	repconninfo = psprintf("%s replication=database", conninfo);
 	conn = connect_database(repconninfo, false);
 
 	res = PQexec(conn, "IDENTIFY_SYSTEM");
