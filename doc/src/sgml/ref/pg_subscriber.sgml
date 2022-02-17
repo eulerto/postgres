@@ -116,12 +116,6 @@ PostgreSQL documentation
    for each specified database on the target server. The subscription starts
    streaming from the consistent LSN.
   </para>
-
-  <para>
-   If the <option>--stop-subscriber</option> option is specified,
-   <application>pg_subscriber</application> stops the target server once it
-   enables all created subscriptions.
-  </para>
  </refsect1>
 
  <refsect1>
@@ -179,14 +173,6 @@ PostgreSQL documentation
         operation to complete. The operations are: start the server until it is
         accepting connections and finish the recovery process. Default is 1
         hour.
-       </para>
-      </listitem>
-     </varlistentry>
-     <varlistentry>
-      <term><option>--stop-subscriber</option></term>
-      <listitem>
-       <para>
-        Stops the target server once the logical replication setup is done.
        </para>
       </listitem>
      </varlistentry>
@@ -249,10 +235,9 @@ PostgreSQL documentation
 
   <para>
    To create a logical replica for databases <literal>hr</literal> and
-   <literal>finance</literal> from a standby server at <literal>foo</literal>
-   and stops the server whose subscriptions were created:
+   <literal>finance</literal> from a standby server at <literal>foo</literal>:
 <screen>
-<prompt>$</prompt> <userinput>pg_subscriber -D /usr/local/pgsql/data -P "host=foo" -S "host=localhost" -d hr -d finance --stop-subscriber</userinput>
+<prompt>$</prompt> <userinput>pg_subscriber -D /usr/local/pgsql/data -P "host=foo" -S "host=localhost" -d hr -d finance</userinput>
 </screen>
   </para>
 

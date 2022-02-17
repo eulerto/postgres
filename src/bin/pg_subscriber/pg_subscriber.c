@@ -57,7 +57,6 @@ static char *pub_conninfo_str = NULL;
 static char *sub_conninfo_str = NULL;
 static SimpleStringList database_names = {NULL, NULL};
 static int	verbose = 0;
-static bool stop_subscriber = false;
 int			wait_timeout = DEFAULT_WAIT;
 
 char		pidfile[MAXPGPATH]; /* subscriber PID file */
@@ -96,7 +95,6 @@ usage(void)
 	printf(_(" -S, --subscriber-conninfo=CONNINFO  subscriber connection string\n"));
 	printf(_(" -d, --database=DBNAME               database to create a subscription\n"));
 	printf(_(" -t, --timeout=SECS                  seconds to wait when starting the server\n"));
-	printf(_(" --stop-subscriber                   stop the subscriber after replication setup is done\n"));
 	printf(_(" -v, --verbose                       output verbose messages\n"));
 	printf(_(" -V, --version                       output version information, then exit\n"));
 	printf(_(" -?, --help                          show this help, then exit\n"));
@@ -922,9 +920,6 @@ main(int argc, char **argv)
 			case 'v':
 				verbose++;
 				break;
-			case 1:
-				stop_subscriber = true;
-				break;
 			default:
 
 				/*
@@ -1255,17 +1250,14 @@ main(int argc, char **argv)
 	drop_replication_slot(dbinfo[0].pubconninfo, temp_replslot);
 
 	/*
-	 * Stop the subscriber, if required.
+	 * Stop the subscriber.
 	 */
-	if (stop_subscriber)
-	{
-		if (verbose)
-			pg_log_info("stopping the subscriber");
+	if (verbose)
+		pg_log_info("stopping the subscriber");
 
-		pg_ctl_cmd = psprintf("\"%s\" stop -D \"%s\" -s", pg_ctl_path, subscriber_dir);
-		rc = system(pg_ctl_cmd);
-		pg_ctl_status(pg_ctl_cmd, rc, "subscriber", 0);
-	}
+	pg_ctl_cmd = psprintf("\"%s\" stop -D \"%s\" -s", pg_ctl_path, subscriber_dir);
+	rc = system(pg_ctl_cmd);
+	pg_ctl_status(pg_ctl_cmd, rc, "subscriber", 0);
 
 	return 0;
 }
