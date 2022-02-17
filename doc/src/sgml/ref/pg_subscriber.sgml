@@ -132,61 +132,61 @@ PostgreSQL documentation
     command-line arguments:
 
     <variablelist>
-	 <varlistentry>
+     <varlistentry>
       <term><option>-D <replaceable class="parameter">directory</replaceable></option></term>
       <term><option>--pgdata=<replaceable class="parameter">directory</replaceable></option></term>
       <listitem>
        <para>
-		The target directory that contains a base backup. It can also be a
-		cluster directory from a standby server.
+        The target directory that contains a base backup. It can also be a
+        cluster directory from a standby server.
        </para>
       </listitem>
      </varlistentry>
-	 <varlistentry>
+     <varlistentry>
       <term><option>-P  <replaceable class="parameter">conninfo</replaceable></option></term>
       <term><option>--publisher-conninfo=<replaceable class="parameter">conninfo</replaceable></option></term>
       <listitem>
        <para>
-	    The connection string to the publisher. For details see <xref linkend="libpq-connstring"/>.
+        The connection string to the publisher. For details see <xref linkend="libpq-connstring"/>.
        </para>
       </listitem>
      </varlistentry>
-	 <varlistentry>
+     <varlistentry>
       <term><option>-S <replaceable class="parameter">conninfo</replaceable></option></term>
       <term><option>--subscriber-conninfo=<replaceable class="parameter">conninfo</replaceable></option></term>
       <listitem>
        <para>
-	    The connection string to the subscriber. For details see <xref linkend="libpq-connstring"/>.
+        The connection string to the subscriber. For details see <xref linkend="libpq-connstring"/>.
        </para>
       </listitem>
      </varlistentry>
-	 <varlistentry>
+     <varlistentry>
       <term><option>-d <replaceable class="parameter">dbname</replaceable></option></term>
       <term><option>--database=<replaceable class="parameter">dbname</replaceable></option></term>
       <listitem>
        <para>
-		The database name to create the subscription. Multiple databases can be
-		selected by writing multiple <option>-d</option> switches.
+        The database name to create the subscription. Multiple databases can be
+        selected by writing multiple <option>-d</option> switches.
        </para>
       </listitem>
      </varlistentry>
-	 <varlistentry>
+     <varlistentry>
       <term><option>-t <replaceable class="parameter">seconds</replaceable></option></term>
       <term><option>--timeout=<replaceable class="parameter">seconds</replaceable></option></term>
       <listitem>
        <para>
-		Specifies the maximum number of seconds to wait when waiting for an
-		operation to complete. The operations are: start the server until it is
-		accepting connections and finish the recovery process. Default is 1
-		hour.
+        Specifies the maximum number of seconds to wait when waiting for an
+        operation to complete. The operations are: start the server until it is
+        accepting connections and finish the recovery process. Default is 1
+        hour.
        </para>
       </listitem>
      </varlistentry>
-	 <varlistentry>
+     <varlistentry>
       <term><option>--stop-subscriber</option></term>
       <listitem>
        <para>
-		Stops the target server once the logical replication setup is done.
+        Stops the target server once the logical replication setup is done.
        </para>
       </listitem>
      </varlistentry>
@@ -196,9 +196,9 @@ PostgreSQL documentation
       <term><option>--verbose</option></term>
       <listitem>
        <para>
-		Enables verbose mode. This will cause
-		<application>pg_subscriber</application> to output progress messages
-		and detailed information about each step.
+        Enables verbose mode. This will cause
+        <application>pg_subscriber</application> to output progress messages
+        and detailed information about each step.
        </para>
       </listitem>
      </varlistentry>
