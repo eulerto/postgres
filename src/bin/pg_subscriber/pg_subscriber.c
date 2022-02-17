@@ -47,7 +47,6 @@ static void set_replication_progress(PGconn *conn, const char *dbname, const cha
 static void enable_subscription(PGconn *conn, const char *dbname, const char *subname);
 
 #define	USEC_PER_SEC	1000000
-#define	DEFAULT_WAIT	3600	/* 1 hour */
 #define	WAIT_INTERVAL	1		/* 1 second */
 
 /* Options */
@@ -57,7 +56,6 @@ static char *pub_conninfo_str = NULL;
 static char *sub_conninfo_str = NULL;
 static SimpleStringList database_names = {NULL, NULL};
 static int	verbose = 0;
-int			wait_timeout = DEFAULT_WAIT;
 
 char		pidfile[MAXPGPATH]; /* subscriber PID file */
 
@@ -94,7 +92,6 @@ usage(void)
 	printf(_(" -P, --publisher-conninfo=CONNINFO   publisher connection string\n"));
 	printf(_(" -S, --subscriber-conninfo=CONNINFO  subscriber connection string\n"));
 	printf(_(" -d, --database=DBNAME               database to create a subscription\n"));
-	printf(_(" -t, --timeout=SECS                  seconds to wait when starting the server\n"));
 	printf(_(" -v, --verbose                       output verbose messages\n"));
 	printf(_(" -V, --version                       output version information, then exit\n"));
 	printf(_(" -?, --help                          show this help, then exit\n"));
@@ -473,8 +470,7 @@ postmaster_is_alive(pid_t pid)
 }
 
 /*
- * Returns after postmaster is accepting connections. It does not wait forever;
- * time out after wait_timeout seconds.
+ * Returns after postmaster is accepting connections.
  */
 static void
 wait_postmaster_connection(const char *conninfo, const char *noderole)
@@ -491,7 +487,7 @@ wait_postmaster_connection(const char *conninfo, const char *noderole)
 	 * Wait postmaster to come up. XXX this code path is a modified version of
 	 * wait_for_postmaster().
 	 */
-	for (i = 0; i < WAIT_INTERVAL * wait_timeout; i++)
+	for (;;)
 	{
 		char	  **optlines;
 		int			numlines;
@@ -530,7 +526,7 @@ wait_postmaster_connection(const char *conninfo, const char *noderole)
 
 	if (status == POSTMASTER_STILL_STARTING)
 	{
-		pg_log_error("server did not start in time after %d seconds", wait_timeout);
+		pg_log_error("server did not start in time");
 		exit(1);
 	}
 	else if (status == POSTMASTER_STANDBY)
@@ -579,9 +575,7 @@ wait_postmaster_connection(const char *conninfo, const char *noderole)
 }
 
 /*
- * Returns after the server finishes the recovery process.  It does not wait
- * forever; time out after wait_timeout seconds. The default is DEFAULT_WAIT
- * seconds.
+ * Returns after the server finishes the recovery process.
  */
 static void
 wait_for_end_recovery(const char *conninfo, const char *noderole)
@@ -596,7 +590,7 @@ wait_for_end_recovery(const char *conninfo, const char *noderole)
 
 	conn = connect_database(conninfo, true);
 
-	for (i = 0; i < WAIT_INTERVAL * wait_timeout; i++)
+	for (;;)
 	{
 		bool		in_recovery;
 
@@ -633,7 +627,7 @@ wait_for_end_recovery(const char *conninfo, const char *noderole)
 
 	if (status == POSTMASTER_STILL_STARTING)
 	{
-		pg_log_error("server did not end recovery after %d seconds", wait_timeout);
+		pg_log_error("server did not end recovery");
 		exit(1);
 	}
 
@@ -828,7 +822,6 @@ main(int argc, char **argv)
 		{"publisher-conninfo", required_argument, NULL, 'P'},
 		{"subscriber-conninfo", required_argument, NULL, 'S'},
 		{"database", required_argument, NULL, 'd'},
-		{"timeout", required_argument, NULL, 't'},
 		{"verbose", no_argument, NULL, 'v'},
 		{"stop-subscriber", no_argument, NULL, 1},
 		{NULL, 0, NULL, 0}
@@ -913,9 +906,6 @@ main(int argc, char **argv)
 			case 'd':
 				simple_string_list_append(&database_names, optarg);
 				num_dbs++;
-				break;
-			case 't':
-				wait_timeout = atoi(optarg);
 				break;
 			case 'v':
 				verbose++;

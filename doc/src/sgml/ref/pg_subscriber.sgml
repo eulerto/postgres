@@ -164,18 +164,6 @@ PostgreSQL documentation
        </para>
       </listitem>
      </varlistentry>
-     <varlistentry>
-      <term><option>-t <replaceable class="parameter">seconds</replaceable></option></term>
-      <term><option>--timeout=<replaceable class="parameter">seconds</replaceable></option></term>
-      <listitem>
-       <para>
-        Specifies the maximum number of seconds to wait when waiting for an
-        operation to complete. The operations are: start the server until it is
-        accepting connections and finish the recovery process. Default is 1
-        hour.
-       </para>
-      </listitem>
-     </varlistentry>
 
      <varlistentry>
       <term><option>-v</option></term>
