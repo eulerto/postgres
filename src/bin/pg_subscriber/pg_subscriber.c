@@ -27,33 +27,6 @@
 #include "getopt_long.h"
 #include "utils/pidfile.h"
 
-static void cleanup_objects_atexit(void);
-static void usage();
-static char *get_base_conninfo(char *conninfo, char *dbname,
-							   const char *noderole);
-static bool check_data_directory(const char *datadir);
-static char *concat_conninfo_dbname(const char *conninfo, const char *dbname);
-static PGconn *connect_database(const char *conninfo, bool secure_search_path);
-static void disconnect_database(PGconn *conn);
-static char *get_sysid_from_conn(const char *conninfo);
-static char *get_control_from_datadir(const char *datadir);
-static char *create_logical_replication_slot(LogicalRepInfo *dbinfo,
-											 const char *slot_name, bool is_temporary);
-static void drop_replication_slot(const char *conninfo, const char *slot_name);
-static void pg_ctl_status(const char *pg_ctl_cmd, int rc, int action);
-static bool postmaster_is_alive(pid_t pid);
-static void wait_postmaster_connection(const char *conninfo);
-static void wait_for_end_recovery(const char *conninfo);
-static void create_publication(PGconn *conn, LogicalRepInfo *dbinfo);
-static void drop_publication(PGconn *conn, LogicalRepInfo *dbinfo);
-static void create_subscription(PGconn *conn, LogicalRepInfo *dbinfo);
-static void drop_subscription(PGconn *conn, LogicalRepInfo *dbinfo);
-static void set_replication_progress(PGconn *conn, LogicalRepInfo *dbinfo, const char *lsn);
-static void enable_subscription(PGconn *conn, LogicalRepInfo *dbinfo);
-
-#define	USEC_PER_SEC	1000000
-#define	WAIT_INTERVAL	1		/* 1 second */
-
 typedef struct LogicalRepInfo
 {
 	Oid			oid;			/* database OID */
@@ -70,6 +43,33 @@ typedef struct LogicalRepInfo
 	bool		made_publication;	/* publication was created */
 	bool		made_subscription;	/* subscription was created */
 }			LogicalRepInfo;
+
+static void cleanup_objects_atexit(void);
+static void usage();
+static char *get_base_conninfo(char *conninfo, char *dbname,
+							   const char *noderole);
+static bool check_data_directory(const char *datadir);
+static char *concat_conninfo_dbname(const char *conninfo, const char *dbname);
+static PGconn *connect_database(const char *conninfo, bool secure_search_path);
+static void disconnect_database(PGconn *conn);
+static char *get_sysid_from_conn(const char *conninfo);
+static char *get_control_from_datadir(const char *datadir);
+static char *create_logical_replication_slot(LogicalRepInfo *dbinfo,
+											 const char *slot_name, bool is_temporary);
+static void drop_replication_slot(LogicalRepInfo *dbinfo, const char *slot_name);
+static void pg_ctl_status(const char *pg_ctl_cmd, int rc, int action);
+static bool postmaster_is_alive(pid_t pid);
+static void wait_postmaster_connection(const char *conninfo);
+static void wait_for_end_recovery(const char *conninfo);
+static void create_publication(PGconn *conn, LogicalRepInfo *dbinfo);
+static void drop_publication(PGconn *conn, LogicalRepInfo *dbinfo);
+static void create_subscription(PGconn *conn, LogicalRepInfo *dbinfo);
+static void drop_subscription(PGconn *conn, LogicalRepInfo *dbinfo);
+static void set_replication_progress(PGconn *conn, LogicalRepInfo *dbinfo, const char *lsn);
+static void enable_subscription(PGconn *conn, LogicalRepInfo *dbinfo);
+
+#define	USEC_PER_SEC	1000000
+#define	WAIT_INTERVAL	1		/* 1 second */
 
 /* Options */
 const char *progname;
@@ -558,7 +558,6 @@ static void
 wait_postmaster_connection(const char *conninfo)
 {
 	PGPing		ret;
-	int			i;
 	long		pmpid;
 	int			status = POSTMASTER_STILL_STARTING;
 
