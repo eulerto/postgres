@@ -1130,15 +1130,15 @@ main(int argc, char **argv)
 
 		/*
 		 * Build the replication slot name. The name must not exceed
-		 * NAMEDATALEN - 1. This current schema uses a maximum of 46 characters
-		 * (14 + 10 + 1 + 20 + '\0'). System identifier is included to reduce
+		 * NAMEDATALEN - 1. This current schema uses a maximum of 36 characters
+		 * (14 + 10 + 1 + 10 + '\0'). System identifier is included to reduce
 		 * the probability of collision. By default, subscription name is used
 		 * as replication slot name.
 		 */
 		snprintf(replslotname, sizeof(replslotname),
-				 "pg_subscriber_%u_%s",
+				 "pg_subscriber_%u_%d",
 				 dbinfo[i].oid,
-				 sub_sysid);
+				 (int) getpid());
 		dbinfo[i].subname = pg_strdup(replslotname);
 
 		/* Create replication slot on publisher. */
@@ -1157,7 +1157,7 @@ main(int argc, char **argv)
 	 * (via pg_basebackup -- after creating the replication slots), the
 	 * consistent point should be after the pg_basebackup finishes.
 	 */
-	snprintf(temp_replslot, sizeof(temp_replslot), "pg_subscriber_%s_tmp", pub_sysid);
+	snprintf(temp_replslot, sizeof(temp_replslot), "pg_subscriber_%d_tmp", (int) getpid());
 	consistent_lsn = create_logical_replication_slot(dbinfo[0].pubconninfo, temp_replslot, false);
 
 	/*
