@@ -1207,7 +1207,7 @@ main(int argc, char **argv)
 
 		/*
 		 * Build the publication name. The name must not exceed NAMEDATALEN -
-		 * 1. This current schema uses a maximum of 35 characters (14 + 20 +
+		 * 1. This current schema uses a maximum of 35 characters (14 + 10 +
 		 * '\0').
 		 */
 		snprintf(pubname, sizeof(pubname), "pg_subscriber_%u", dbinfo[i].oid);
