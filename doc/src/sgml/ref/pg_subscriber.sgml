@@ -95,7 +95,7 @@ PostgreSQL documentation
    each specified database on the target server. Each subscription name
    contains a <literal>pg_subscriber</literal> prefix. The replication slot
    name is identical to the subscription name. It also does not copy existing
-   data from the source server. It does no create a replication slot. Instead,
+   data from the source server. It does not create a replication slot. Instead,
    it uses the replication slot that was created in a previous step. The
    subscription is created but it is not enabled yet. The reason is the
    replication progress must be set to the consistent LSN but replication

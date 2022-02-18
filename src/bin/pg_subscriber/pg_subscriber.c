@@ -1130,7 +1130,7 @@ main(int argc, char **argv)
 
 		/*
 		 * Build the replication slot name. The name must not exceed
-		 * NAMEDATALEN - 1. This current schema uses a maximum of46 characters
+		 * NAMEDATALEN - 1. This current schema uses a maximum of 46 characters
 		 * (14 + 10 + 1 + 20 + '\0'). System identifier is included to reduce
 		 * the probability of collision. By default, subscription name is used
 		 * as replication slot name.
