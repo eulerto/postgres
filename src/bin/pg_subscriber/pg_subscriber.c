@@ -28,23 +28,29 @@
 #include "utils/pidfile.h"
 
 static void usage();
-static char *get_base_conninfo(char *conninfo, char *dbname, const char *noderole);
+static char *get_base_conninfo(char *conninfo, char *dbname,
+							   const char *noderole);
 static bool check_data_directory(const char *datadir);
 static char *concat_conninfo_dbname(const char *conninfo, const char *dbname);
 static PGconn *connect_database(const char *conninfo, bool secure_search_path);
 static void disconnect_database(PGconn *conn);
 static char *get_sysid_from_conn(const char *conninfo);
 static char *get_control_from_datadir(const char *datadir);
-static char *create_logical_replication_slot(const char *conninfo, const char *slot_name, bool is_temporary);
+static char *create_logical_replication_slot(const char *conninfo,
+		const char *slot_name, bool is_temporary);
 static void drop_replication_slot(const char *conninfo, const char *slot_name);
 static void pg_ctl_status(const char *pg_ctl_cmd, int rc, int action);
 static bool postmaster_is_alive(pid_t pid);
 static void wait_postmaster_connection(const char *conninfo);
 static void wait_for_end_recovery(const char *conninfo);
-static void create_publication(PGconn *conn, const char *dbname, const char *pubname);
-static void create_subscription(PGconn *conn, const char *dbname, const char *subname, const char *pubname, const char *pubconninfo);
-static void set_replication_progress(PGconn *conn, const char *dbname, const char *subname, const char *lsn);
-static void enable_subscription(PGconn *conn, const char *dbname, const char *subname);
+static void create_publication(PGconn *conn, const char *dbname,
+							   const char *pubname);
+static void create_subscription(PGconn *conn, const char *dbname,
+								const char *subname, const char *pubname, const char *pubconninfo);
+static void set_replication_progress(PGconn *conn, const char *dbname,
+									 const char *subname, const char *lsn);
+static void enable_subscription(PGconn *conn, const char *dbname,
+								const char *subname);
 
 #define	USEC_PER_SEC	1000000
 #define	WAIT_INTERVAL	1		/* 1 second */
@@ -84,7 +90,8 @@ typedef struct LogicalRepInfo
 static void
 usage(void)
 {
-	printf(_("%s creates a new logical replica from a base backup or a standby server.\n\n"), progname);
+	printf(_("%s creates a new logical replica from a base backup or a standby server.\n\n"),
+		   progname);
 	printf(_("Usage:\n"));
 	printf(_("  %s [OPTION]...\n"), progname);
 	printf(_("\nOptions:\n"));
@@ -173,7 +180,8 @@ check_data_directory(const char *datadir)
 	char		versionfile[MAXPGPATH];
 
 	if (verbose)
-		pg_log_info("checking if directory \"%s\" is a cluster data directory", datadir);
+		pg_log_info("checking if directory \"%s\" is a cluster data directory",
+					datadir);
 
 	if (stat(datadir, &statbuf) != 0)
 	{
@@ -335,7 +343,8 @@ get_control_from_datadir(const char *datadir)
  * result set that contains the consistent LSN.
  */
 static char *
-create_logical_replication_slot(const char *conninfo, const char *slot_name, bool is_temporary)
+create_logical_replication_slot(const char *conninfo, const char *slot_name,
+								bool is_temporary)
 {
 	PGconn	   *conn;
 	PQExpBuffer str = createPQExpBuffer();
@@ -360,7 +369,8 @@ create_logical_replication_slot(const char *conninfo, const char *slot_name, boo
 	res = PQexec(conn, str->data);
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
-		pg_log_error("could not create replication slot \"%s\": %s", slot_name, PQresultErrorMessage(res));
+		pg_log_error("could not create replication slot \"%s\": %s", slot_name,
+					 PQresultErrorMessage(res));
 		return lsn;
 	}
 
@@ -392,7 +402,8 @@ drop_replication_slot(const char *conninfo, const char *slot_name)
 
 	res = PQexec(conn, str->data);
 	if (PQresultStatus(res) != PGRES_COMMAND_OK)
-		pg_log_error("could not drop replication slot \"%s\": %s", slot_name, PQerrorMessage(conn));
+		pg_log_error("could not drop replication slot \"%s\": %s", slot_name,
+					 PQerrorMessage(conn));
 
 	PQclear(res);
 	destroyPQExpBuffer(str);
@@ -416,7 +427,8 @@ pg_ctl_status(const char *pg_ctl_cmd, int rc, int action)
 		{
 #if defined(WIN32)
 			pg_log_error("pg_ctl was terminated by exception 0x%X", WTERMSIG(rc));
-			fprintf(stderr, "See C include file \"ntstatus.h\" for a description of the hexadecimal value.\n");
+			fprintf(stderr,
+					"See C include file \"ntstatus.h\" for a description of the hexadecimal value.\n");
 #else
 			pg_log_error("pg_ctl was terminated by signal %d: %s",
 						 WTERMSIG(rc), pg_strsignal(WTERMSIG(rc)));
@@ -493,7 +505,7 @@ wait_postmaster_connection(const char *conninfo)
 		int			numlines;
 
 		if ((optlines = readfile(pidfile, &numlines)) != NULL &&
-			numlines >= LOCK_FILE_LINE_PM_STATUS)
+				numlines >= LOCK_FILE_LINE_PM_STATUS)
 		{
 			/*
 			 * Check the status line (this assumes a v10 or later server).
@@ -647,11 +659,14 @@ create_publication(PGconn *conn, const char *dbname, const char *pubname)
 	Assert(conn != NULL);
 
 	/* Check if the publication needs to be created. */
-	appendPQExpBuffer(str, "SELECT puballtables FROM pg_catalog.pg_publication WHERE pubname = '%s'", pubname);
+	appendPQExpBuffer(str,
+					  "SELECT puballtables FROM pg_catalog.pg_publication WHERE pubname = '%s'",
+					  pubname);
 	res = PQexec(conn, str->data);
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
-		pg_log_error("could not obtain publication information: %s", PQresultErrorMessage(res));
+		pg_log_error("could not obtain publication information: %s",
+					 PQresultErrorMessage(res));
 		PQclear(res);
 		PQfinish(conn);
 		exit(1);
@@ -686,7 +701,8 @@ create_publication(PGconn *conn, const char *dbname, const char *pubname)
 			 * the user choose a name with pg_subscriber_ prefix followed by
 			 * the exact database oid in which puballtables is false.
 			 */
-			pg_log_error("publication \"%s\" does not replicate changes for all tables", pubname);
+			pg_log_error("publication \"%s\" does not replicate changes for all tables",
+						 pubname);
 			PQclear(res);
 			PQfinish(conn);
 			exit(1);
@@ -707,7 +723,8 @@ create_publication(PGconn *conn, const char *dbname, const char *pubname)
 	res = PQexec(conn, str->data);
 	if (PQresultStatus(res) != PGRES_COMMAND_OK)
 	{
-		pg_log_error("could not create publication \"%s\" on database \"%s\": %s", pubname, dbname, PQerrorMessage(conn));
+		pg_log_error("could not create publication \"%s\" on database \"%s\": %s",
+					 pubname, dbname, PQerrorMessage(conn));
 		PQfinish(conn);
 		exit(1);
 	}
@@ -729,7 +746,8 @@ create_publication(PGconn *conn, const char *dbname, const char *pubname)
  * initial location.
  */
 static void
-create_subscription(PGconn *conn, const char *dbname, const char *subname, const char *pubname, const char *pubconninfo)
+create_subscription(PGconn *conn, const char *dbname, const char *subname,
+					const char *pubname, const char *pubconninfo)
 {
 	PQExpBuffer str = createPQExpBuffer();
 	PGresult   *res;
@@ -750,7 +768,8 @@ create_subscription(PGconn *conn, const char *dbname, const char *subname, const
 	res = PQexec(conn, str->data);
 	if (PQresultStatus(res) != PGRES_COMMAND_OK)
 	{
-		pg_log_error("could not create subscription \"%s\" on database \"%s\": %s", subname, dbname, PQerrorMessage(conn));
+		pg_log_error("could not create subscription \"%s\" on database \"%s\": %s",
+					 subname, dbname, PQerrorMessage(conn));
 		PQfinish(conn);
 		exit(1);
 	}
@@ -768,7 +787,8 @@ create_subscription(PGconn *conn, const char *dbname, const char *subname, const
  * subscription is enabled it will start streaming from that location onwards.
  */
 static void
-set_replication_progress(PGconn *conn, const char *dbname, const char *subname, const char *lsn)
+set_replication_progress(PGconn *conn, const char *dbname, const char *subname,
+						 const char *lsn)
 {
 	PQExpBuffer str = createPQExpBuffer();
 	PGresult   *res;
@@ -777,12 +797,14 @@ set_replication_progress(PGconn *conn, const char *dbname, const char *subname, 
 
 	Assert(conn != NULL);
 
-	appendPQExpBuffer(str, "SELECT oid FROM pg_catalog.pg_subscription WHERE subname = '%s'", subname);
+	appendPQExpBuffer(str,
+					  "SELECT oid FROM pg_catalog.pg_subscription WHERE subname = '%s'", subname);
 
 	res = PQexec(conn, str->data);
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
-		pg_log_error("could not obtain subscription OID: %s", PQresultErrorMessage(res));
+		pg_log_error("could not obtain subscription OID: %s",
+					 PQresultErrorMessage(res));
 		PQclear(res);
 		PQfinish(conn);
 		exit(1);
@@ -807,10 +829,12 @@ set_replication_progress(PGconn *conn, const char *dbname, const char *subname, 
 	PQclear(res);
 
 	if (verbose)
-		pg_log_info("setting the replication progress (node name \"%s\" ; LSN %s) on database \"%s\"", originname, lsn, dbname);
+		pg_log_info("setting the replication progress (node name \"%s\" ; LSN %s) on database \"%s\"",
+					originname, lsn, dbname);
 
 	resetPQExpBuffer(str);
-	appendPQExpBuffer(str, "SELECT pg_catalog.pg_replication_origin_advance('%s', '%s')", originname, lsn);
+	appendPQExpBuffer(str,
+					  "SELECT pg_catalog.pg_replication_origin_advance('%s', '%s')", originname, lsn);
 
 	if (verbose)
 		pg_log_info("command is: %s", str->data);
@@ -818,7 +842,8 @@ set_replication_progress(PGconn *conn, const char *dbname, const char *subname, 
 	res = PQexec(conn, str->data);
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
-		pg_log_error("could not set replication progress for the subscription \"%s\": %s", subname, PQresultErrorMessage(res));
+		pg_log_error("could not set replication progress for the subscription \"%s\": %s",
+					 subname, PQresultErrorMessage(res));
 		PQfinish(conn);
 		exit(1);
 	}
@@ -853,7 +878,8 @@ enable_subscription(PGconn *conn, const char *dbname, const char *subname)
 	res = PQexec(conn, str->data);
 	if (PQresultStatus(res) != PGRES_COMMAND_OK)
 	{
-		pg_log_error("could not enable subscription \"%s\": %s", subname, PQerrorMessage(conn));
+		pg_log_error("could not enable subscription \"%s\": %s", subname,
+					 PQerrorMessage(conn));
 		PQfinish(conn);
 		exit(1);
 	}
@@ -865,7 +891,8 @@ enable_subscription(PGconn *conn, const char *dbname, const char *subname)
 int
 main(int argc, char **argv)
 {
-	static struct option long_options[] = {
+	static struct option long_options[] =
+	{
 		{"help", no_argument, NULL, '?'},
 		{"version", no_argument, NULL, 'V'},
 		{"pgdata", required_argument, NULL, 'D'},
@@ -1012,7 +1039,8 @@ main(int argc, char **argv)
 		exit(1);
 	}
 	dbname_conninfo = pg_malloc(NAMEDATALEN);
-	pub_base_conninfo = get_base_conninfo(pub_conninfo_str, dbname_conninfo, "publisher");
+	pub_base_conninfo = get_base_conninfo(pub_conninfo_str, dbname_conninfo,
+										  "publisher");
 	if (pub_base_conninfo == NULL)
 		exit(1);
 
@@ -1043,7 +1071,8 @@ main(int argc, char **argv)
 			num_dbs++;
 
 			if (verbose)
-				pg_log_info("database \"%s\" was extracted from the publisher connection string", dbname_conninfo);
+				pg_log_info("database \"%s\" was extracted from the publisher connection string",
+							dbname_conninfo);
 		}
 		else
 		{
@@ -1153,7 +1182,8 @@ main(int argc, char **argv)
 
 		conn = connect_database(dbinfo[i].pubconninfo, true);
 
-		res = PQexec(conn, "SELECT oid FROM pg_catalog.pg_database WHERE datname = current_database()");
+		res = PQexec(conn,
+					 "SELECT oid FROM pg_catalog.pg_database WHERE datname = current_database()");
 		if (PQresultStatus(res) != PGRES_TUPLES_OK)
 		{
 			pg_log_error("could not obtain database OID: %s", PQresultErrorMessage(res));
@@ -1192,7 +1222,8 @@ main(int argc, char **argv)
 		dbinfo[i].subname = pg_strdup(replslotname);
 
 		/* Create replication slot on publisher. */
-		if (create_logical_replication_slot(dbinfo[i].pubconninfo, replslotname, false) != NULL)
+		if (create_logical_replication_slot(dbinfo[i].pubconninfo, replslotname,
+											false) != NULL)
 			pg_log_info("create replication slot \"%s\" on publisher", replslotname);
 		else
 			exit(1);
@@ -1207,8 +1238,10 @@ main(int argc, char **argv)
 	 * (via pg_basebackup -- after creating the replication slots), the
 	 * consistent point should be after the pg_basebackup finishes.
 	 */
-	snprintf(temp_replslot, sizeof(temp_replslot), "pg_subscriber_%d_tmp", (int) getpid());
-	consistent_lsn = create_logical_replication_slot(dbinfo[0].pubconninfo, temp_replslot, false);
+	snprintf(temp_replslot, sizeof(temp_replslot), "pg_subscriber_%d_tmp",
+			 (int) getpid());
+	consistent_lsn = create_logical_replication_slot(dbinfo[0].pubconninfo,
+					 temp_replslot, false);
 
 	/*
 	 * Write recovery parameters.
@@ -1220,7 +1253,8 @@ main(int argc, char **argv)
 	 */
 	conn = connect_database(dbinfo[0].pubconninfo, false);
 	recoveryconfcontents = GenerateRecoveryConfig(conn, NULL);
-	appendPQExpBuffer(recoveryconfcontents, "recovery_target_lsn = '%s'\n", consistent_lsn);
+	appendPQExpBuffer(recoveryconfcontents, "recovery_target_lsn = '%s'\n",
+					  consistent_lsn);
 	appendPQExpBuffer(recoveryconfcontents, "recovery_target_inclusive = true\n");
 	appendPQExpBuffer(recoveryconfcontents, "recovery_target_action = promote\n");
 
@@ -1276,10 +1310,12 @@ main(int argc, char **argv)
 		/* Connect to subscriber. */
 		conn = connect_database(dbinfo[i].subconninfo, true);
 
-		create_subscription(conn, dbinfo[i].dbname, dbinfo[i].subname, dbinfo[i].pubname, dbinfo[i].pubconninfo);
+		create_subscription(conn, dbinfo[i].dbname, dbinfo[i].subname,
+							dbinfo[i].pubname, dbinfo[i].pubconninfo);
 
 		/* Set the replication progress to the correct LSN. */
-		set_replication_progress(conn, dbinfo[i].dbname, dbinfo[i].subname, consistent_lsn);
+		set_replication_progress(conn, dbinfo[i].dbname, dbinfo[i].subname,
+								 consistent_lsn);
 
 		/* Enable subscription. */
 		enable_subscription(conn, dbinfo[i].dbname, dbinfo[i].subname);
