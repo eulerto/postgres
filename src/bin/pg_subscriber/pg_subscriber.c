@@ -37,7 +37,7 @@ static void disconnect_database(PGconn *conn);
 static char *get_sysid_from_conn(const char *conninfo);
 static char *get_control_from_datadir(const char *datadir);
 static char *create_logical_replication_slot(const char *conninfo,
-		const char *slot_name, bool is_temporary);
+											 const char *slot_name, bool is_temporary);
 static void drop_replication_slot(const char *conninfo, const char *slot_name);
 static void pg_ctl_status(const char *pg_ctl_cmd, int rc, int action);
 static bool postmaster_is_alive(pid_t pid);
@@ -505,7 +505,7 @@ wait_postmaster_connection(const char *conninfo)
 		int			numlines;
 
 		if ((optlines = readfile(pidfile, &numlines)) != NULL &&
-				numlines >= LOCK_FILE_LINE_PM_STATUS)
+			numlines >= LOCK_FILE_LINE_PM_STATUS)
 		{
 			/*
 			 * Check the status line (this assumes a v10 or later server).
@@ -1241,7 +1241,7 @@ main(int argc, char **argv)
 	snprintf(temp_replslot, sizeof(temp_replslot), "pg_subscriber_%d_tmp",
 			 (int) getpid());
 	consistent_lsn = create_logical_replication_slot(dbinfo[0].pubconninfo,
-					 temp_replslot, false);
+													 temp_replslot, false);
 
 	/*
 	 * Write recovery parameters.
