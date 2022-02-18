@@ -663,7 +663,6 @@ wait_for_end_recovery(const char *conninfo)
 {
 	PGconn	   *conn;
 	PGresult   *res;
-	int			i;
 	int			status = POSTMASTER_STILL_STARTING;
 
 	if (verbose)
@@ -1461,7 +1460,7 @@ main(int argc, char **argv)
 	/*
 	 * The temporary replication slot is no longer required. Drop it.
 	 */
-	drop_replication_slot(dbinfo[0].pubconninfo, temp_replslot);
+	drop_replication_slot(&dbinfo[0], temp_replslot);
 
 	/*
 	 * Stop the subscriber.
