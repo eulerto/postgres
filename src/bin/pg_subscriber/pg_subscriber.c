@@ -37,10 +37,10 @@ static char *get_sysid_from_conn(const char *conninfo);
 static char *get_control_from_datadir(const char *datadir);
 static char *create_logical_replication_slot(const char *conninfo, const char *slot_name, bool is_temporary);
 static void drop_replication_slot(const char *conninfo, const char *slot_name);
-static void pg_ctl_status(const char *pg_ctl_cmd, int rc, const char *noderole, int action);
+static void pg_ctl_status(const char *pg_ctl_cmd, int rc, int action);
 static bool postmaster_is_alive(pid_t pid);
-static void wait_postmaster_connection(const char *conninfo, const char *noderole);
-static void wait_for_end_recovery(const char *conninfo, const char *noderole);
+static void wait_postmaster_connection(const char *conninfo);
+static void wait_for_end_recovery(const char *conninfo);
 static void create_publication(PGconn *conn, const char *dbname, const char *pubname);
 static void create_subscription(PGconn *conn, const char *dbname, const char *subname, const char *pubname, const char *pubconninfo);
 static void set_replication_progress(PGconn *conn, const char *dbname, const char *subname, const char *lsn);
@@ -404,7 +404,7 @@ drop_replication_slot(const char *conninfo, const char *slot_name)
  * Reports a suitable message if pg_ctl fails.
  */
 static void
-pg_ctl_status(const char *pg_ctl_cmd, int rc, const char *noderole, int action)
+pg_ctl_status(const char *pg_ctl_cmd, int rc, int action)
 {
 	if (rc != 0)
 	{
@@ -434,9 +434,9 @@ pg_ctl_status(const char *pg_ctl_cmd, int rc, const char *noderole, int action)
 	if (verbose)
 	{
 		if (action)
-			pg_log_info("%s was started", noderole);
+			pg_log_info("postmaster was started");
 		else
-			pg_log_info("%s was stopped", noderole);
+			pg_log_info("postmaster was stopped");
 	}
 }
 
@@ -473,7 +473,7 @@ postmaster_is_alive(pid_t pid)
  * Returns after postmaster is accepting connections.
  */
 static void
-wait_postmaster_connection(const char *conninfo, const char *noderole)
+wait_postmaster_connection(const char *conninfo)
 {
 	PGPing		ret;
 	int			i;
@@ -481,7 +481,7 @@ wait_postmaster_connection(const char *conninfo, const char *noderole)
 	int			status = POSTMASTER_STILL_STARTING;
 
 	if (verbose)
-		pg_log_info("waiting for the %s to allow connections ...", noderole);
+		pg_log_info("waiting for the postmaster to allow connections ...");
 
 	/*
 	 * Wait postmaster to come up. XXX this code path is a modified version of
@@ -543,8 +543,8 @@ wait_postmaster_connection(const char *conninfo, const char *noderole)
 
 	if (verbose)
 	{
-		pg_log_info("%s is up and running", noderole);
-		pg_log_info("waiting until the %s accepts connections ...", noderole);
+		pg_log_info("postmaster is up and running");
+		pg_log_info("waiting until the postmaster accepts connections ...");
 	}
 
 	/* Postmaster is up. Let's wait for it to accept connections. */
@@ -571,14 +571,14 @@ wait_postmaster_connection(const char *conninfo, const char *noderole)
 	}
 
 	if (verbose)
-		pg_log_info("%s is accepting connections", noderole);
+		pg_log_info("postmaster is accepting connections");
 }
 
 /*
  * Returns after the server finishes the recovery process.
  */
 static void
-wait_for_end_recovery(const char *conninfo, const char *noderole)
+wait_for_end_recovery(const char *conninfo)
 {
 	PGconn	   *conn;
 	PGresult   *res;
@@ -586,7 +586,7 @@ wait_for_end_recovery(const char *conninfo, const char *noderole)
 	int			status = POSTMASTER_STILL_STARTING;
 
 	if (verbose)
-		pg_log_info("waiting the %s to reach the consistent state ...", noderole);
+		pg_log_info("waiting the postmaster to reach the consistent state ...");
 
 	conn = connect_database(conninfo, true);
 
@@ -632,7 +632,7 @@ wait_for_end_recovery(const char *conninfo, const char *noderole)
 	}
 
 	if (verbose)
-		pg_log_info("%s reached the consistent state", noderole);
+		pg_log_info("postmaster reached the consistent state");
 }
 
 /*
@@ -1090,7 +1090,7 @@ main(int argc, char **argv)
 
 		pg_ctl_cmd = psprintf("\"%s\" stop -D \"%s\" -s", pg_ctl_path, subscriber_dir);
 		rc = system(pg_ctl_cmd);
-		pg_ctl_status(pg_ctl_cmd, rc, "subscriber", 0);
+		pg_ctl_status(pg_ctl_cmd, rc, 0);
 	}
 
 	/*
@@ -1180,15 +1180,18 @@ main(int argc, char **argv)
 	/*
 	 * Start subscriber and wait until accepting connections.
 	 */
+	if (verbose)
+		pg_log_info("starting the subscriber");
+
 	pg_ctl_cmd = psprintf("\"%s\" start -D \"%s\" -s", pg_ctl_path, subscriber_dir);
 	rc = system(pg_ctl_cmd);
-	pg_ctl_status(pg_ctl_cmd, rc, "subscriber", 1);
-	wait_postmaster_connection(dbinfo[0].subconninfo, "subscriber");
+	pg_ctl_status(pg_ctl_cmd, rc, 1);
+	wait_postmaster_connection(dbinfo[0].subconninfo);
 
 	/*
 	 * Waiting the subscriber to be promoted.
 	 */
-	wait_for_end_recovery(dbinfo[0].subconninfo, "subscriber");
+	wait_for_end_recovery(dbinfo[0].subconninfo);
 
 	/*
 	 * Create a publication for each database. This step should be executed
@@ -1247,7 +1250,7 @@ main(int argc, char **argv)
 
 	pg_ctl_cmd = psprintf("\"%s\" stop -D \"%s\" -s", pg_ctl_path, subscriber_dir);
 	rc = system(pg_ctl_cmd);
-	pg_ctl_status(pg_ctl_cmd, rc, "subscriber", 0);
+	pg_ctl_status(pg_ctl_cmd, rc, 0);
 
 	return 0;
 }
