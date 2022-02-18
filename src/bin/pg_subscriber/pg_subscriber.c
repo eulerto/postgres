@@ -646,6 +646,56 @@ create_publication(PGconn *conn, const char *dbname, const char *pubname)
 
 	Assert(conn != NULL);
 
+	/* Check if the publication needs to be created. */
+	appendPQExpBuffer(str, "SELECT puballtables FROM pg_catalog.pg_publication WHERE pubname = '%s'", pubname);
+	res = PQexec(conn, str->data);
+	if (PQresultStatus(res) != PGRES_TUPLES_OK)
+	{
+		pg_log_error("could not obtain publication information: %s", PQresultErrorMessage(res));
+		PQclear(res);
+		PQfinish(conn);
+		exit(1);
+	}
+
+	if (PQntuples(res) != 1)
+	{
+		pg_log_error("could not obtain publication information: got %d rows, expected %d rows",
+					 PQntuples(res), 1);
+		PQclear(res);
+		PQfinish(conn);
+		exit(1);
+	}
+	else
+	{
+		/*
+		 * If publication name already exists and puballtables is true, let's
+		 * use it. A previous run of pg_subscriber must have created this
+		 * publication. Bail out.
+		 */
+		if (strcmp(PQgetvalue(res, 0, 0), "t") == 0)
+		{
+			if (verbose)
+				pg_log_info("publication \"%s\" already exists", pubname);
+			return;
+		}
+		else
+		{
+			/*
+			 * XXX Unfortunately, if it reaches this code path, pg_subscriber
+			 * will always fail here. That's bad but it is not expected that
+			 * the user choose a name with pg_subscriber_ prefix followed by
+			 * the exact database oid in which puballtables is false.
+			 */
+			pg_log_error("publication \"%s\" does not replicate changes for all tables", pubname);
+			PQclear(res);
+			PQfinish(conn);
+			exit(1);
+		}
+	}
+
+	PQclear(res);
+	resetPQExpBuffer(str);
+
 	if (verbose)
 		pg_log_info("creating publication \"%s\" on database \"%s\"", pubname, dbname);
 
