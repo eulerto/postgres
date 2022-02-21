@@ -730,15 +730,7 @@ create_publication(PGconn *conn, LogicalRepInfo *dbinfo)
 		exit(1);
 	}
 
-	if (PQntuples(res) != 1)
-	{
-		pg_log_error("could not obtain publication information: got %d rows, expected %d rows",
-					 PQntuples(res), 1);
-		PQclear(res);
-		PQfinish(conn);
-		exit(1);
-	}
-	else
+	if (PQntuples(res) == 1)
 	{
 		/*
 		 * If publication name already exists and puballtables is true, let's
