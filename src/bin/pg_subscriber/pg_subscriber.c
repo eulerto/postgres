@@ -54,9 +54,9 @@ static PGconn *connect_database(const char *conninfo, bool secure_search_path);
 static void disconnect_database(PGconn *conn);
 static char *get_sysid_from_conn(const char *conninfo);
 static char *get_control_from_datadir(const char *datadir);
-static char *create_logical_replication_slot(LogicalRepInfo *dbinfo,
+static char *create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
 											 const char *slot_name, bool is_temporary);
-static void drop_replication_slot(LogicalRepInfo *dbinfo, const char *slot_name);
+static void drop_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo, const char *slot_name);
 static void pg_ctl_status(const char *pg_ctl_cmd, int rc, int action);
 static bool postmaster_is_alive(pid_t pid);
 static void wait_postmaster_connection(const char *conninfo);
@@ -135,14 +135,18 @@ cleanup_objects_atexit(void)
 				if (dbinfo[i].made_publication)
 					drop_publication(conn, &dbinfo[i]);
 				if (dbinfo[i].made_replslot)
-					drop_replication_slot(&dbinfo[i], NULL);
+					drop_replication_slot(conn, &dbinfo[i], NULL);
 				disconnect_database(conn);
 			}
 		}
 	}
 
 	if (made_temp_replslot)
-		drop_replication_slot(&dbinfo[i], temp_replslot);
+	{
+		conn = connect_database(dbinfo[0].pubconninfo, true);
+		drop_replication_slot(conn, &dbinfo[0], temp_replslot);
+		disconnect_database(conn);
+	}
 }
 
 static void
@@ -278,6 +282,7 @@ concat_conninfo_dbname(const char *conninfo, const char *dbname)
 
 	appendPQExpBufferStr(buf, conninfo);
 	appendPQExpBuffer(buf, " dbname=%s", dbname);
+	appendPQExpBufferStr(buf, " replication=database");
 
 	ret = pg_strdup(buf->data);
 	destroyPQExpBuffer(buf);
@@ -403,22 +408,18 @@ get_control_from_datadir(const char *datadir)
  * result set that contains the consistent LSN.
  */
 static char *
-create_logical_replication_slot(LogicalRepInfo *dbinfo, const char *slot_name,
-								bool is_temporary)
+create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
+								const char *slot_name, bool is_temporary)
 {
 	PGconn	   *conn;
 	PQExpBuffer str = createPQExpBuffer();
 	PGresult   *res;
-	char	   *repconninfo;
 	char	   *lsn = NULL;
+
+	Assert(conn != NULL);
 
 	if (verbose)
 		pg_log_info("creating the replication slot \"%s\" on database \"%s\"", slot_name, dbinfo->dbname);
-
-	repconninfo = psprintf("%s replication=database", dbinfo->pubconninfo);
-	conn = connect_database(repconninfo, false);
-	if (conn == NULL)
-		exit(1);
 
 	appendPQExpBuffer(str, "CREATE_REPLICATION_SLOT \"%s\"", slot_name);
 	if (is_temporary)
@@ -447,26 +448,20 @@ create_logical_replication_slot(LogicalRepInfo *dbinfo, const char *slot_name,
 	PQclear(res);
 	destroyPQExpBuffer(str);
 
-	disconnect_database(conn);
-
 	return lsn;
 }
 
 static void
-drop_replication_slot(LogicalRepInfo *dbinfo, const char *slot_name)
+drop_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo, const char *slot_name)
 {
 	PGconn	   *conn;
 	PQExpBuffer str = createPQExpBuffer();
 	PGresult   *res;
-	char	   *repconninfo;
+
+	Assert(conn != NULL);
 
 	if (verbose)
 		pg_log_info("dropping the replication slot \"%s\" on database \"%s\"", slot_name, dbinfo->dbname);
-
-	repconninfo = psprintf("%s replication=database", dbinfo->pubconninfo);
-	conn = connect_database(repconninfo, false);
-	if (conn == NULL)
-		exit(1);
 
 	appendPQExpBuffer(str, "DROP_REPLICATION_SLOT \"%s\"", slot_name);
 
@@ -477,8 +472,6 @@ drop_replication_slot(LogicalRepInfo *dbinfo, const char *slot_name)
 
 	PQclear(res);
 	destroyPQExpBuffer(str);
-
-	disconnect_database(conn);
 }
 
 /*
@@ -1336,8 +1329,6 @@ main(int argc, char **argv)
 
 		PQclear(res);
 
-		disconnect_database(conn);
-
 		/*
 		 * Build the replication slot name. The name must not exceed
 		 * NAMEDATALEN - 1. This current schema uses a maximum of 36
@@ -1352,11 +1343,13 @@ main(int argc, char **argv)
 		dbinfo[i].subname = pg_strdup(replslotname);
 
 		/* Create replication slot on publisher. */
-		if (create_logical_replication_slot(&dbinfo[i], replslotname,
+		if (create_logical_replication_slot(conn, &dbinfo[i], replslotname,
 											false) != NULL)
 			pg_log_info("create replication slot \"%s\" on publisher", replslotname);
 		else
 			exit(1);
+
+		disconnect_database(conn);
 	}
 
 	/*
@@ -1368,9 +1361,12 @@ main(int argc, char **argv)
 	 * (via pg_basebackup -- after creating the replication slots), the
 	 * consistent point should be after the pg_basebackup finishes.
 	 */
+	conn = connect_database(dbinfo[0].pubconninfo, false);
+	if (conn == NULL)
+		exit(1);
 	snprintf(temp_replslot, sizeof(temp_replslot), "pg_subscriber_%d_tmp",
 			 (int) getpid());
-	consistent_lsn = create_logical_replication_slot(&dbinfo[0],
+	consistent_lsn = create_logical_replication_slot(conn, &dbinfo[0],
 													 temp_replslot, false);
 
 	/*
@@ -1381,9 +1377,6 @@ main(int argc, char **argv)
 	 * connection is only used to check the current server version (physical
 	 * replica, same server version). The subscriber is not running yet.
 	 */
-	conn = connect_database(dbinfo[0].pubconninfo, false);
-	if (conn == NULL)
-		exit(1);
 	recoveryconfcontents = GenerateRecoveryConfig(conn, NULL);
 	appendPQExpBuffer(recoveryconfcontents, "recovery_target_lsn = '%s'\n",
 					  consistent_lsn);
@@ -1459,8 +1452,14 @@ main(int argc, char **argv)
 
 	/*
 	 * The temporary replication slot is no longer required. Drop it.
+	 * XXX we might not fail here. Instead, provide a warning so the user
+	 * XXX eventually drops the replication slot later.
 	 */
-	drop_replication_slot(&dbinfo[0], temp_replslot);
+	conn = connect_database(dbinfo[0].pubconninfo, true);
+	if (conn == NULL)
+		exit(1);
+	drop_replication_slot(conn, &dbinfo[0], temp_replslot);
+	disconnect_database(conn);
 
 	/*
 	 * Stop the subscriber.
