@@ -108,15 +108,14 @@ enum WaitPMResult
 static void
 cleanup_objects_atexit(void)
 {
-	int	i;
+	PGconn	*conn;
+	int		i;
 
 	if (success)
 		return;
 
 	for (i = 0; i < num_dbs; i++)
 	{
-		PGconn	*conn;
-
 		if (dbinfo[i].made_subscription)
 		{
 			conn = connect_database(dbinfo[i].subconninfo, true);
@@ -411,7 +410,6 @@ static char *
 create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
 								const char *slot_name)
 {
-	PGconn	   *conn;
 	PQExpBuffer str = createPQExpBuffer();
 	PGresult   *res;
 	char	   *lsn = NULL;
@@ -452,7 +450,6 @@ create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
 static void
 drop_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo, const char *slot_name)
 {
-	PGconn	   *conn;
 	PQExpBuffer str = createPQExpBuffer();
 	PGresult   *res;
 
