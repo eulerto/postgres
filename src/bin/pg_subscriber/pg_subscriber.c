@@ -55,7 +55,7 @@ static void disconnect_database(PGconn *conn);
 static char *get_sysid_from_conn(const char *conninfo);
 static char *get_control_from_datadir(const char *datadir);
 static char *create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
-											 const char *slot_name, bool is_temporary);
+											 const char *slot_name);
 static void drop_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo, const char *slot_name);
 static void pg_ctl_status(const char *pg_ctl_cmd, int rc, int action);
 static bool postmaster_is_alive(pid_t pid);
@@ -409,7 +409,7 @@ get_control_from_datadir(const char *datadir)
  */
 static char *
 create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
-								const char *slot_name, bool is_temporary)
+								const char *slot_name)
 {
 	PGconn	   *conn;
 	PQExpBuffer str = createPQExpBuffer();
@@ -422,8 +422,6 @@ create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
 		pg_log_info("creating the replication slot \"%s\" on database \"%s\"", slot_name, dbinfo->dbname);
 
 	appendPQExpBuffer(str, "CREATE_REPLICATION_SLOT \"%s\"", slot_name);
-	if (is_temporary)
-		appendPQExpBufferStr(str, " TEMPORARY");
 	appendPQExpBufferStr(str, " LOGICAL \"pgoutput\" NOEXPORT_SNAPSHOT");
 
 	if (verbose)
@@ -1343,8 +1341,7 @@ main(int argc, char **argv)
 		dbinfo[i].subname = pg_strdup(replslotname);
 
 		/* Create replication slot on publisher. */
-		if (create_logical_replication_slot(conn, &dbinfo[i], replslotname,
-											false) != NULL)
+		if (create_logical_replication_slot(conn, &dbinfo[i], replslotname) != NULL)
 			pg_log_info("create replication slot \"%s\" on publisher", replslotname);
 		else
 			exit(1);
@@ -1367,7 +1364,7 @@ main(int argc, char **argv)
 	snprintf(temp_replslot, sizeof(temp_replslot), "pg_subscriber_%d_tmp",
 			 (int) getpid());
 	consistent_lsn = create_logical_replication_slot(conn, &dbinfo[0],
-													 temp_replslot, false);
+													 temp_replslot);
 
 	/*
 	 * Write recovery parameters.
