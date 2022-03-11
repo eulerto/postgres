@@ -14,6 +14,7 @@
 
 #include <signal.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <sys/wait.h>
 #include <time.h>
 
@@ -54,6 +55,7 @@ static PGconn *connect_database(const char *conninfo, bool secure_search_path);
 static void disconnect_database(PGconn *conn);
 static char *get_sysid_from_conn(const char *conninfo);
 static char *get_control_from_datadir(const char *datadir);
+static void modify_sysid(const char *pg_resetwal_path, const char *datadir);
 static char *create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
 											 const char *slot_name);
 static void drop_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo, const char *slot_name);
@@ -397,6 +399,55 @@ get_control_from_datadir(const char *datadir)
 	pfree(cf);
 
 	return sysid;
+}
+
+/*
+ * Modify the system identifier. Since a base backup preserves the system
+ * identifier, it makes sense to change it to avoid situations in which WAL
+ * files from one of the systems might be used in the other one.
+ */
+static void
+modify_sysid(const char *pg_resetwal_path, const char *datadir)
+{
+	ControlFileData *cf;
+	bool		crc_ok;
+	struct timeval tv;
+
+	char		*cmd_str;
+	int			rc;
+
+	if (verbose)
+		pg_log_info("modifying system identifier from subscriber");
+
+	cf = get_controlfile(datadir, &crc_ok);
+	if (!crc_ok)
+	{
+		pg_log_error("control file appears to be corrupt");
+		exit(1);
+	}
+
+	/*
+	 * Select a new system identifier.
+	 * XXX this code was extracted from BootStrapXLOG().
+	 */
+	gettimeofday(&tv, NULL);
+	cf->system_identifier = ((uint64) tv.tv_sec) << 32;
+	cf->system_identifier |= ((uint64) tv.tv_usec) << 12;
+	cf->system_identifier |= getpid() & 0xFFF;
+
+	update_controlfile(datadir, cf, true);
+
+	if (verbose)
+		pg_log_info("stopping the subscriber");
+
+	cmd_str = psprintf("\"%s\" -D \"%s\" -s", pg_resetwal_path, datadir);
+	rc = system(cmd_str);
+	if (rc == 0)
+		pg_log_info("subscriber changed the system identifier successfully");
+	else
+		pg_log_error("subscriber failed to change system identifier: exit code: %d", rc);
+
+	pfree(cf);
 }
 
 /*
@@ -1017,6 +1068,7 @@ main(int argc, char **argv)
 
 	char	   *pg_ctl_path;
 	char	   *pg_ctl_cmd;
+	char	   *pg_resetwal_path;
 	int			rc;
 
 	SimpleStringListCell *cell;
@@ -1216,6 +1268,35 @@ main(int argc, char **argv)
 
 	if (verbose)
 		pg_log_info("pg_ctl path is: %s", pg_ctl_path);
+
+	/*
+	 * Get the absolute pg_resetwal path on the subscriber.
+	 */
+	pg_resetwal_path = pg_malloc(MAXPGPATH);
+	rc = find_other_exec(argv[0], "pg_resetwal",
+						 "pg_resetwal (PostgreSQL) " PG_VERSION "\n",
+						 pg_resetwal_path);
+	if (rc < 0)
+	{
+		char		full_path[MAXPGPATH];
+
+		if (find_my_exec(argv[0], full_path) < 0)
+			strlcpy(full_path, progname, sizeof(full_path));
+		if (rc == -1)
+			pg_log_error("The program \"%s\" is needed by %s but was not found in the\n"
+						 "same directory as \"%s\".\n"
+						 "Check your installation.",
+						 "pg_resetwal", progname, full_path);
+		else
+			pg_log_error("The program \"%s\" was found by \"%s\"\n"
+						 "but was not the same version as %s.\n"
+						 "Check your installation.",
+						 "pg_resetwal", full_path, progname);
+		exit(1);
+	}
+
+	if (verbose)
+		pg_log_info("pg_resetwal path is: %s", pg_resetwal_path);
 
 	/* rudimentary check for a data directory. */
 	if (!check_data_directory(subscriber_dir))
@@ -1456,6 +1537,11 @@ main(int argc, char **argv)
 	pg_ctl_cmd = psprintf("\"%s\" stop -D \"%s\" -s", pg_ctl_path, subscriber_dir);
 	rc = system(pg_ctl_cmd);
 	pg_ctl_status(pg_ctl_cmd, rc, 0);
+
+	/*
+	 * Change system identifier.
+	 */
+	modify_sysid(pg_resetwal_path, subscriber_dir);
 
 	success = true;
 
