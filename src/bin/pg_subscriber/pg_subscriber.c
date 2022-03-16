@@ -1058,8 +1058,29 @@ main(int argc, char **argv)
 		{"publisher-conninfo", required_argument, NULL, 'P'},
 		{"subscriber-conninfo", required_argument, NULL, 'S'},
 		{"database", required_argument, NULL, 'd'},
+		{"basebackup-args", required_argument, NULL, 'b'},
 		{"verbose", no_argument, NULL, 'v'},
 		{"stop-subscriber", no_argument, NULL, 1},
+		{NULL, 0, NULL, 0}
+	};
+
+	static struct option basebackup_long_options[] =
+	{
+		{"checkpoint", required_argument, NULL, 'c'},
+		{"max-rate", required_argument, NULL, 'r'},
+		{"tablespace-mapping", required_argument, NULL, 'T'},
+		{"gzip", no_argument, NULL, 'z'},
+		{"compress", required_argument, NULL, 'Z'},
+		{"label", required_argument, NULL, 'l'},
+		{"no-clean", no_argument, NULL, 'n'},
+		{"no-sync", no_argument, NULL, 'N'},
+		{"status-interval", required_argument, NULL, 's'},
+		{"verbose", no_argument, NULL, 'v'},
+		{"progress", no_argument, NULL, 'P'},
+		{"waldir", required_argument, NULL, 1},
+		{"no-slot", no_argument, NULL, 2},
+		{"no-verify-checksums", no_argument, NULL, 3},
+		{"no-estimate-size", no_argument, NULL, 4},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -1076,6 +1097,7 @@ main(int argc, char **argv)
 	char	   *pub_base_conninfo = NULL;
 	char	   *sub_base_conninfo = NULL;
 	char	   *dbname_conninfo;
+	char	   *basebackup_args = NULL;
 
 	char	   *pub_sysid;
 	char	   *sub_sysid;
@@ -1123,7 +1145,7 @@ main(int argc, char **argv)
 	}
 #endif
 
-	while ((c = getopt_long(argc, argv, "D:P:S:d:t:v",
+	while ((c = getopt_long(argc, argv, "D:P:S:d:t:b:v",
 							long_options, &option_index)) != -1)
 	{
 		switch (c)
@@ -1143,6 +1165,9 @@ main(int argc, char **argv)
 				break;
 			case 'v':
 				verbose++;
+				break;
+			case 'b':
+				basebackup_args = pg_strdup(optarg);
 				break;
 			default:
 
