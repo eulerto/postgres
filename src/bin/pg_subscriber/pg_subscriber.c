@@ -53,8 +53,8 @@ static bool check_data_directory(const char *datadir);
 static char *concat_conninfo_dbname(const char *conninfo, const char *dbname);
 static PGconn *connect_database(const char *conninfo, bool secure_search_path);
 static void disconnect_database(PGconn *conn);
-static char *get_sysid_from_conn(const char *conninfo);
-static char *get_control_from_datadir(const char *datadir);
+static uint64 get_sysid_from_conn(const char *conninfo);
+static uint64 get_control_from_datadir(const char *datadir);
 static void modify_sysid(const char *pg_resetwal_path, const char *datadir);
 static char *create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
 											 const char *slot_name);
@@ -332,13 +332,13 @@ disconnect_database(PGconn *conn)
  * Obtain the system identifier using the provided connection. It will be used
  * to compare if a data directory is a clone of another one.
  */
-static char *
+static uint64
 get_sysid_from_conn(const char *conninfo)
 {
 	PGconn	   *conn;
 	PGresult   *res;
 	char	   *repconninfo;
-	char	   *sysid = NULL;
+	uint64		sysid;
 
 	if (verbose)
 		pg_log_info("getting system identifier from publisher");
@@ -365,7 +365,7 @@ get_sysid_from_conn(const char *conninfo)
 		return NULL;
 	}
 
-	sysid = pg_strdup(PQgetvalue(res, 0, 0));
+	sysid = strtou64(PQgetvalue(res, 0, 0), NULL, 10);
 
 	disconnect_database(conn);
 
@@ -377,12 +377,12 @@ get_sysid_from_conn(const char *conninfo)
  * if a data directory is a clone of another one. This routine is used locally
  * and avoids a replication connection.
  */
-static char *
+static uint64
 get_control_from_datadir(const char *datadir)
 {
 	ControlFileData *cf;
 	bool		crc_ok;
-	char	   *sysid = pg_malloc(32);
+	uint64		sysid;
 
 	if (verbose)
 		pg_log_info("getting system identifier from subscriber");
@@ -394,7 +394,7 @@ get_control_from_datadir(const char *datadir)
 		exit(1);
 	}
 
-	snprintf(sysid, 32, UINT64_FORMAT, cf->system_identifier);
+	sysid = cf->system_identifier;
 
 	pfree(cf);
 
@@ -1099,8 +1099,8 @@ main(int argc, char **argv)
 	char	   *dbname_conninfo;
 	char	   *basebackup_args = NULL;
 
-	char	   *pub_sysid;
-	char	   *sub_sysid;
+	uint64		pub_sysid;
+	uint64		sub_sysid;
 	struct stat statbuf;
 
 	PGconn	   *conn;
@@ -1357,11 +1357,9 @@ main(int argc, char **argv)
 	 * Check if the subscriber data directory has the same system identifier
 	 * than the publisher data directory.
 	 */
-	pub_sysid = pg_malloc(32);
 	pub_sysid = get_sysid_from_conn(dbinfo[0].pubconninfo);
-	sub_sysid = pg_malloc(32);
 	sub_sysid = get_control_from_datadir(subscriber_dir);
-	if (strcmp(pub_sysid, sub_sysid) != 0)
+	if (pub_sysid != sub_sysid)
 	{
 		pg_log_error("subscriber data directory is not a base backup from the publisher");
 		exit(1);
