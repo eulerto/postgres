@@ -1060,7 +1060,6 @@ main(int argc, char **argv)
 		{"database", required_argument, NULL, 'd'},
 		{"basebackup-args", required_argument, NULL, 'b'},
 		{"verbose", no_argument, NULL, 'v'},
-		{"stop-subscriber", no_argument, NULL, 1},
 		{NULL, 0, NULL, 0}
 	};
 
