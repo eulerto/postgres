@@ -87,7 +87,7 @@ static LogicalRepInfo  *dbinfo;
 static int		num_dbs = 0;
 
 static char		temp_replslot[NAMEDATALEN];
-static bool		made_temp_replslot = false;
+static bool		made_transient_replslot = false;
 
 char		pidfile[MAXPGPATH]; /* subscriber PID file */
 
@@ -142,7 +142,7 @@ cleanup_objects_atexit(void)
 		}
 	}
 
-	if (made_temp_replslot)
+	if (made_transient_replslot)
 	{
 		conn = connect_database(dbinfo[0].pubconninfo, true);
 		drop_replication_slot(conn, &dbinfo[0], temp_replslot);
@@ -488,7 +488,7 @@ create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
 	if (slot_name == NULL)
 		dbinfo->made_replslot = true;
 	else
-		made_temp_replslot = true;
+		made_transient_replslot = true;
 
 	lsn = pg_strdup(PQgetvalue(res, 0, 1));
 
@@ -1445,18 +1445,22 @@ main(int argc, char **argv)
 	}
 
 	/*
-	 * Create a temporary logical replication slot to get a consistent LSN.
+	 * Create a logical replication slot to get a consistent LSN.
 	 *
 	 * This consistent LSN will be used later to advanced the recently created
 	 * replication slots. We could probably use the last created replication
 	 * slot, however, if this tool decides to support cloning the publisher
 	 * (via pg_basebackup -- after creating the replication slots), the
 	 * consistent point should be after the pg_basebackup finishes.
+	 *
+	 * A temporary replication slot is not used here to avoid keeping a
+	 * replication connection open (depending when base backup was taken, the
+	 * connection should be open for a few hours).
 	 */
 	conn = connect_database(dbinfo[0].pubconninfo, false);
 	if (conn == NULL)
 		exit(1);
-	snprintf(temp_replslot, sizeof(temp_replslot), "pg_subscriber_%d_tmp",
+	snprintf(temp_replslot, sizeof(temp_replslot), "pg_subscriber_%d_startpoint",
 			 (int) getpid());
 	consistent_lsn = create_logical_replication_slot(conn, &dbinfo[0],
 													 temp_replslot);
@@ -1543,9 +1547,10 @@ main(int argc, char **argv)
 	}
 
 	/*
-	 * The temporary replication slot is no longer required. Drop it.
-	 * XXX we might not fail here. Instead, provide a warning so the user
-	 * XXX eventually drops the replication slot later.
+	 * The transient replication slot is no longer required. Drop it.
+	 *
+	 * FIXME we might not fail here. Instead, provide a warning so the user
+	 * eventually drops the replication slot later.
 	 */
 	conn = connect_database(dbinfo[0].pubconninfo, true);
 	if (conn == NULL)
