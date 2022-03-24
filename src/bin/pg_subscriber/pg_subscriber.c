@@ -1095,7 +1095,7 @@ main(int argc, char **argv)
 
 	char	   *pub_base_conninfo = NULL;
 	char	   *sub_base_conninfo = NULL;
-	char	   *dbname_conninfo;
+	char	   *dbname_conninfo = NULL;
 	char	   *basebackup_args = NULL;
 
 	uint64		pub_sysid;
@@ -1219,7 +1219,6 @@ main(int argc, char **argv)
 				progname);
 		exit(1);
 	}
-	dbname_conninfo = pg_malloc(NAMEDATALEN);
 	pub_base_conninfo = get_base_conninfo(pub_conninfo_str, dbname_conninfo,
 										  "publisher");
 	if (pub_base_conninfo == NULL)
