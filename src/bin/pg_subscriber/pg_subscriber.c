@@ -49,6 +49,7 @@ static void cleanup_objects_atexit(void);
 static void usage();
 static char *get_base_conninfo(char *conninfo, char *dbname,
 							   const char *noderole);
+static bool get_exec_path(void);
 static bool check_data_directory(const char *datadir);
 static char *concat_conninfo_dbname(const char *conninfo, const char *dbname);
 static PGconn *connect_database(const char *conninfo, bool secure_search_path);
@@ -81,6 +82,9 @@ static char *sub_conninfo_str = NULL;
 static SimpleStringList database_names = {NULL, NULL};
 static int	verbose = 0;
 static bool	success = false;
+
+static char	*pg_ctl_path = NULL;
+static char *pg_resetwal_path = NULL;
 
 static LogicalRepInfo  *dbinfo;
 
@@ -229,6 +233,70 @@ get_base_conninfo(char *conninfo, char *dbname, const char *noderole)
 	PQconninfoFree(conn_opts);
 
 	return ret;
+}
+
+/*
+ * Get the absolute path from other PostgreSQL binaries (pg_ctl and
+ * pg_resetwal) that is used by it.
+ */
+static bool
+get_exec_path(void)
+{
+	int		rc;
+
+	pg_ctl_path = pg_malloc(MAXPGPATH);
+	rc = find_other_exec(argv[0], "pg_ctl",
+						 "pg_ctl (PostgreSQL) " PG_VERSION "\n",
+						 pg_ctl_path);
+	if (rc < 0)
+	{
+		char		full_path[MAXPGPATH];
+
+		if (find_my_exec(argv[0], full_path) < 0)
+			strlcpy(full_path, progname, sizeof(full_path));
+		if (rc == -1)
+			pg_log_error("The program \"%s\" is needed by %s but was not found in the\n"
+						 "same directory as \"%s\".\n"
+						 "Check your installation.",
+						 "pg_ctl", progname, full_path);
+		else
+			pg_log_error("The program \"%s\" was found by \"%s\"\n"
+						 "but was not the same version as %s.\n"
+						 "Check your installation.",
+						 "pg_ctl", full_path, progname);
+		return false;
+	}
+
+	if (verbose)
+		pg_log_info("pg_ctl path is: %s", pg_ctl_path);
+
+	pg_resetwal_path = pg_malloc(MAXPGPATH);
+	rc = find_other_exec(argv[0], "pg_resetwal",
+						 "pg_resetwal (PostgreSQL) " PG_VERSION "\n",
+						 pg_resetwal_path);
+	if (rc < 0)
+	{
+		char		full_path[MAXPGPATH];
+
+		if (find_my_exec(argv[0], full_path) < 0)
+			strlcpy(full_path, progname, sizeof(full_path));
+		if (rc == -1)
+			pg_log_error("The program \"%s\" is needed by %s but was not found in the\n"
+						 "same directory as \"%s\".\n"
+						 "Check your installation.",
+						 "pg_resetwal", progname, full_path);
+		else
+			pg_log_error("The program \"%s\" was found by \"%s\"\n"
+						 "but was not the same version as %s.\n"
+						 "Check your installation.",
+						 "pg_resetwal", full_path, progname);
+		return false;
+	}
+
+	if (verbose)
+		pg_log_info("pg_resetwal path is: %s", pg_resetwal_path);
+
+	return true;
 }
 
 /*
@@ -1086,10 +1154,7 @@ main(int argc, char **argv)
 	int			c;
 	int			option_index;
 
-	char	   *pg_ctl_path;
 	char	   *pg_ctl_cmd;
-	char	   *pg_resetwal_path;
-	int			rc;
 
 	SimpleStringListCell *cell;
 
@@ -1264,62 +1329,10 @@ main(int argc, char **argv)
 	}
 
 	/*
-	 * Get the absolute pg_ctl path on the subscriber.
+	 * Get the absolute path of pg_ctl and pg_resetwal on the subscriber.
 	 */
-	pg_ctl_path = pg_malloc(MAXPGPATH);
-	rc = find_other_exec(argv[0], "pg_ctl",
-						 "pg_ctl (PostgreSQL) " PG_VERSION "\n",
-						 pg_ctl_path);
-	if (rc < 0)
-	{
-		char		full_path[MAXPGPATH];
-
-		if (find_my_exec(argv[0], full_path) < 0)
-			strlcpy(full_path, progname, sizeof(full_path));
-		if (rc == -1)
-			pg_log_error("The program \"%s\" is needed by %s but was not found in the\n"
-						 "same directory as \"%s\".\n"
-						 "Check your installation.",
-						 "pg_ctl", progname, full_path);
-		else
-			pg_log_error("The program \"%s\" was found by \"%s\"\n"
-						 "but was not the same version as %s.\n"
-						 "Check your installation.",
-						 "pg_ctl", full_path, progname);
+	if (!get_exec_path())
 		exit(1);
-	}
-
-	if (verbose)
-		pg_log_info("pg_ctl path is: %s", pg_ctl_path);
-
-	/*
-	 * Get the absolute pg_resetwal path on the subscriber.
-	 */
-	pg_resetwal_path = pg_malloc(MAXPGPATH);
-	rc = find_other_exec(argv[0], "pg_resetwal",
-						 "pg_resetwal (PostgreSQL) " PG_VERSION "\n",
-						 pg_resetwal_path);
-	if (rc < 0)
-	{
-		char		full_path[MAXPGPATH];
-
-		if (find_my_exec(argv[0], full_path) < 0)
-			strlcpy(full_path, progname, sizeof(full_path));
-		if (rc == -1)
-			pg_log_error("The program \"%s\" is needed by %s but was not found in the\n"
-						 "same directory as \"%s\".\n"
-						 "Check your installation.",
-						 "pg_resetwal", progname, full_path);
-		else
-			pg_log_error("The program \"%s\" was found by \"%s\"\n"
-						 "but was not the same version as %s.\n"
-						 "Check your installation.",
-						 "pg_resetwal", full_path, progname);
-		exit(1);
-	}
-
-	if (verbose)
-		pg_log_info("pg_resetwal path is: %s", pg_resetwal_path);
 
 	/* rudimentary check for a data directory. */
 	if (!check_data_directory(subscriber_dir))
