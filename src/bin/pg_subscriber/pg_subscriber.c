@@ -52,6 +52,7 @@ static char *get_base_conninfo(char *conninfo, char *dbname,
 static bool get_exec_path(void);
 static bool check_data_directory(const char *datadir);
 static char *concat_conninfo_dbname(const char *conninfo, const char *dbname);
+static LogicalRepInfo *store_pub_sub_info(int num_dbs);
 static PGconn *connect_database(const char *conninfo, bool secure_search_path);
 static void disconnect_database(PGconn *conn);
 static uint64 get_sysid_from_conn(const char *conninfo);
@@ -357,6 +358,40 @@ concat_conninfo_dbname(const char *conninfo, const char *dbname)
 	destroyPQExpBuffer(buf);
 
 	return ret;
+}
+
+/*
+ * Store publication and subscription information.
+ */
+static LogicalRepInfo *
+store_pub_sub_info(int num_dbs)
+{
+	LogicalRepInfo	*dbinfo;
+	int				i = 0;
+
+	dbinfo = (LogicalRepInfo *) pg_malloc(num_dbs * sizeof(LogicalRepInfo));
+
+	for (cell = database_names.head; cell; cell = cell->next)
+	{
+		char	   *conninfo;
+
+		/* Publisher. */
+		conninfo = concat_conninfo_dbname(pub_base_conninfo, cell->val);
+		dbinfo[i].pubconninfo = conninfo;
+		dbinfo[i].dbname = cell->val;
+		dbinfo[i].made_replslot = false;
+		dbinfo[i].made_publication = false;
+		dbinfo[i].made_subscription = false;
+		/* other struct fields will be filled later. */
+
+		/* Subscriber. */
+		conninfo = concat_conninfo_dbname(sub_base_conninfo, cell->val);
+		dbinfo[i].subconninfo = conninfo;
+
+		i++;
+	}
+
+	return dbinfo;
 }
 
 static PGconn *
@@ -1342,27 +1377,7 @@ main(int argc, char **argv)
 	snprintf(pidfile, MAXPGPATH, "%s/postmaster.pid", subscriber_dir);
 
 	/* Store database information for publisher and subscriber. */
-	dbinfo = (LogicalRepInfo *) pg_malloc(num_dbs * sizeof(LogicalRepInfo));
-	i = 0;
-	for (cell = database_names.head; cell; cell = cell->next)
-	{
-		char	   *conninfo;
-
-		/* Publisher. */
-		conninfo = concat_conninfo_dbname(pub_base_conninfo, cell->val);
-		dbinfo[i].pubconninfo = conninfo;
-		dbinfo[i].dbname = cell->val;
-		dbinfo[i].made_replslot = false;
-		dbinfo[i].made_publication = false;
-		dbinfo[i].made_subscription = false;
-		/* other struct fields will be filled later. */
-
-		/* Subscriber. */
-		conninfo = concat_conninfo_dbname(sub_base_conninfo, cell->val);
-		dbinfo[i].subconninfo = conninfo;
-
-		i++;
-	}
+	dbinfo = store_pub_sub_info(num_dbs);
 
 	/*
 	 * Check if the subscriber data directory has the same system identifier
