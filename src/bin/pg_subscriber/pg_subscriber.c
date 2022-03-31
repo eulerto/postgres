@@ -58,6 +58,7 @@ static void disconnect_database(PGconn *conn);
 static uint64 get_sysid_from_conn(const char *conninfo);
 static uint64 get_control_from_datadir(const char *datadir);
 static void modify_sysid(const char *pg_resetwal_path, const char *datadir);
+static bool create_all_logical_replication_slots(LogicalRepInfo *dbinfo, int num_dbs);
 static char *create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
 											 const char *slot_name);
 static void drop_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo, const char *slot_name);
@@ -551,6 +552,66 @@ modify_sysid(const char *pg_resetwal_path, const char *datadir)
 		pg_log_error("subscriber failed to change system identifier: exit code: %d", rc);
 
 	pfree(cf);
+}
+
+static bool
+create_all_logical_replication_slots(LogicalRepInfo *dbinfo, int num_dbs)
+{
+	int		i;
+
+	for (i = 0; i < num_dbs; i++)
+	{
+		PGconn		*conn;
+		PGresult   *res;
+		char		replslotname[NAMEDATALEN];
+
+		conn = connect_database(dbinfo[i].pubconninfo, true);
+		if (conn == NULL)
+			exit(1);
+
+		res = PQexec(conn,
+					 "SELECT oid FROM pg_catalog.pg_database WHERE datname = current_database()");
+		if (PQresultStatus(res) != PGRES_TUPLES_OK)
+		{
+			pg_log_error("could not obtain database OID: %s", PQresultErrorMessage(res));
+			return false;
+		}
+
+		if (PQntuples(res) != 1)
+		{
+			pg_log_error("could not obtain database OID: got %d rows, expected %d rows",
+						 PQntuples(res), 1);
+			return false;
+		}
+
+		/* Remember database OID. */
+		dbinfo[i].oid = strtoul(PQgetvalue(res, 0, 0), NULL, 10);
+
+		PQclear(res);
+
+		/*
+		 * Build the replication slot name. The name must not exceed
+		 * NAMEDATALEN - 1. This current schema uses a maximum of 36
+		 * characters (14 + 10 + 1 + 10 + '\0'). System identifier is included
+		 * to reduce the probability of collision. By default, subscription
+		 * name is used as replication slot name.
+		 */
+		snprintf(replslotname, sizeof(replslotname),
+				 "pg_subscriber_%u_%d",
+				 dbinfo[i].oid,
+				 (int) getpid());
+		dbinfo[i].subname = pg_strdup(replslotname);
+
+		/* Create replication slot on publisher. */
+		if (create_logical_replication_slot(conn, &dbinfo[i], replslotname) != NULL)
+			pg_log_info("create replication slot \"%s\" on publisher", replslotname);
+		else
+			return false;
+
+		disconnect_database(conn);
+	}
+
+	return true;
 }
 
 /*
@@ -1413,60 +1474,8 @@ main(int argc, char **argv)
 	/*
 	 * Create a replication slot for each database on the publisher.
 	 */
-	for (i = 0; i < num_dbs; i++)
-	{
-		PGresult   *res;
-		char		replslotname[NAMEDATALEN];
-
-		conn = connect_database(dbinfo[i].pubconninfo, true);
-		if (conn == NULL)
-			exit(1);
-
-		res = PQexec(conn,
-					 "SELECT oid FROM pg_catalog.pg_database WHERE datname = current_database()");
-		if (PQresultStatus(res) != PGRES_TUPLES_OK)
-		{
-			pg_log_error("could not obtain database OID: %s", PQresultErrorMessage(res));
-			PQclear(res);
-			PQfinish(conn);
-			exit(1);
-		}
-
-		if (PQntuples(res) != 1)
-		{
-			pg_log_error("could not obtain database OID: got %d rows, expected %d rows",
-						 PQntuples(res), 1);
-			PQclear(res);
-			PQfinish(conn);
-			exit(1);
-		}
-
-		/* Remember database OID. */
-		dbinfo[i].oid = strtoul(PQgetvalue(res, 0, 0), NULL, 10);
-
-		PQclear(res);
-
-		/*
-		 * Build the replication slot name. The name must not exceed
-		 * NAMEDATALEN - 1. This current schema uses a maximum of 36
-		 * characters (14 + 10 + 1 + 10 + '\0'). System identifier is included
-		 * to reduce the probability of collision. By default, subscription
-		 * name is used as replication slot name.
-		 */
-		snprintf(replslotname, sizeof(replslotname),
-				 "pg_subscriber_%u_%d",
-				 dbinfo[i].oid,
-				 (int) getpid());
-		dbinfo[i].subname = pg_strdup(replslotname);
-
-		/* Create replication slot on publisher. */
-		if (create_logical_replication_slot(conn, &dbinfo[i], replslotname) != NULL)
-			pg_log_info("create replication slot \"%s\" on publisher", replslotname);
-		else
-			exit(1);
-
-		disconnect_database(conn);
-	}
+	if (!create_all_logical_replication_slots(dbinfo, num_dbs))
+		exit(1);
 
 	/*
 	 * Create a logical replication slot to get a consistent LSN.
