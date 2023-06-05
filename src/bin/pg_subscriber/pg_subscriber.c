@@ -49,10 +49,10 @@ static void cleanup_objects_atexit(void);
 static void usage();
 static char *get_base_conninfo(char *conninfo, char *dbname,
 							   const char *noderole);
-static bool get_exec_path(void);
+static bool get_exec_path(const char *path);
 static bool check_data_directory(const char *datadir);
 static char *concat_conninfo_dbname(const char *conninfo, const char *dbname);
-static LogicalRepInfo *store_pub_sub_info(int num_dbs);
+static LogicalRepInfo *store_pub_sub_info(int num_dbs, char *pub_base_conninfo, char *sub_base_conninfo);
 static PGconn *connect_database(const char *conninfo, bool secure_search_path);
 static void disconnect_database(PGconn *conn);
 static uint64 get_sysid_from_conn(const char *conninfo);
@@ -242,19 +242,19 @@ get_base_conninfo(char *conninfo, char *dbname, const char *noderole)
  * pg_resetwal) that is used by it.
  */
 static bool
-get_exec_path(void)
+get_exec_path(const char *path)
 {
 	int		rc;
 
 	pg_ctl_path = pg_malloc(MAXPGPATH);
-	rc = find_other_exec(argv[0], "pg_ctl",
+	rc = find_other_exec(path, "pg_ctl",
 						 "pg_ctl (PostgreSQL) " PG_VERSION "\n",
 						 pg_ctl_path);
 	if (rc < 0)
 	{
 		char		full_path[MAXPGPATH];
 
-		if (find_my_exec(argv[0], full_path) < 0)
+		if (find_my_exec(path, full_path) < 0)
 			strlcpy(full_path, progname, sizeof(full_path));
 		if (rc == -1)
 			pg_log_error("The program \"%s\" is needed by %s but was not found in the\n"
@@ -273,14 +273,14 @@ get_exec_path(void)
 		pg_log_info("pg_ctl path is: %s", pg_ctl_path);
 
 	pg_resetwal_path = pg_malloc(MAXPGPATH);
-	rc = find_other_exec(argv[0], "pg_resetwal",
+	rc = find_other_exec(path, "pg_resetwal",
 						 "pg_resetwal (PostgreSQL) " PG_VERSION "\n",
 						 pg_resetwal_path);
 	if (rc < 0)
 	{
 		char		full_path[MAXPGPATH];
 
-		if (find_my_exec(argv[0], full_path) < 0)
+		if (find_my_exec(path, full_path) < 0)
 			strlcpy(full_path, progname, sizeof(full_path));
 		if (rc == -1)
 			pg_log_error("The program \"%s\" is needed by %s but was not found in the\n"
@@ -365,9 +365,10 @@ concat_conninfo_dbname(const char *conninfo, const char *dbname)
  * Store publication and subscription information.
  */
 static LogicalRepInfo *
-store_pub_sub_info(int num_dbs)
+store_pub_sub_info(int num_dbs, char *pub_base_conninfo, char *sub_base_conninfo)
 {
 	LogicalRepInfo	*dbinfo;
+	SimpleStringListCell *cell;
 	int				i = 0;
 
 	dbinfo = (LogicalRepInfo *) pg_malloc(num_dbs * sizeof(LogicalRepInfo));
@@ -458,7 +459,7 @@ get_sysid_from_conn(const char *conninfo)
 		pg_log_error("could not send replication command \"%s\": %s",
 					 "IDENTIFY_SYSTEM", PQresultErrorMessage(res));
 		PQclear(res);
-		return NULL;
+		return 0;	/* FIXME exit(1)? */
 	}
 	if (PQntuples(res) != 1 || PQnfields(res) < 3)
 	{
@@ -466,7 +467,7 @@ get_sysid_from_conn(const char *conninfo)
 					 PQntuples(res), PQnfields(res), 1, 3);
 
 		PQclear(res);
-		return NULL;
+		return 0;	/* FIXME exit(1)? */
 	}
 
 	sysid = strtou64(PQgetvalue(res, 0, 0), NULL, 10);
@@ -1231,8 +1232,6 @@ main(int argc, char **argv)
 
 	char	   *pg_ctl_cmd;
 
-	SimpleStringListCell *cell;
-
 	char	   *pub_base_conninfo = NULL;
 	char	   *sub_base_conninfo = NULL;
 	char	   *dbname_conninfo = NULL;
@@ -1402,7 +1401,7 @@ main(int argc, char **argv)
 	/*
 	 * Get the absolute path of pg_ctl and pg_resetwal on the subscriber.
 	 */
-	if (!get_exec_path())
+	if (!get_exec_path(argv[0]))
 		exit(1);
 
 	/* rudimentary check for a data directory. */
@@ -1413,7 +1412,7 @@ main(int argc, char **argv)
 	snprintf(pidfile, MAXPGPATH, "%s/postmaster.pid", subscriber_dir);
 
 	/* Store database information for publisher and subscriber. */
-	dbinfo = store_pub_sub_info(num_dbs);
+	dbinfo = store_pub_sub_info(num_dbs, pub_base_conninfo, sub_base_conninfo);
 
 	/*
 	 * Check if the subscriber data directory has the same system identifier
@@ -1435,6 +1434,8 @@ main(int argc, char **argv)
 	 */
 	if (stat(pidfile, &statbuf) == 0)
 	{
+		int rc;
+
 		if (verbose)
 		{
 			pg_log_info("subscriber is up and running");
