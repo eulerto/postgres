@@ -681,10 +681,12 @@ CreateReplicationSlot_internal(PGconn *conn, const char *slot_name, const char *
 			/* Duplicate replication slot. Obtain the current LSN. */
 			if (lsn)
 			{
-				res = PQexec(conn, "SELECT restart_lsn FROM pg_catalog.pg_replication_slots WHERE slot_name = '%s'", slot_name);
+				query = createPQExpBuffer();
+				appendPQExpBuffer(query, "SELECT restart_lsn FROM pg_catalog.pg_replication_slots WHERE slot_name = '%s'", slot_name);
+				res = PQexec(conn, query->data);
 				if (PQresultStatus(res) != PGRES_TUPLES_OK)
 				{
-					pg_log_error("could not read replication slot \"%s\": got %d rows, expected %d rows", PQntuples(res), 1);
+					pg_log_error("could not read replication slot \"%s\": got %d rows, expected %d rows", slot_name, PQntuples(res), 1);
 					return false;	/* FIXME can't happen */
 				}
 				else if (PQgetisnull(res, 0, 0))
@@ -693,8 +695,9 @@ CreateReplicationSlot_internal(PGconn *conn, const char *slot_name, const char *
 				}
 				else
 				{
-					*lsn = pg_strdup(PQgetvalue(res, 0, 0));
+					lsn = pg_strdup(PQgetvalue(res, 0, 0));
 				}
+				destroyPQExpBuffer(query);
 				PQclear(res);
 			}
 
@@ -727,7 +730,7 @@ CreateReplicationSlot_internal(PGconn *conn, const char *slot_name, const char *
 		if (PQgetisnull(res, 0, 1))
 			lsn = NULL;
 		else
-			*lsn = pg_strdup(PQgetvalue(res, 0, 1));
+			lsn = pg_strdup(PQgetvalue(res, 0, 1));
 	}
 
 	destroyPQExpBuffer(query);
