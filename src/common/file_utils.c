@@ -521,7 +521,7 @@ durable_rename(const char *oldfile, const char *newfile)
  * *numlines is set to the number of line pointers returned; there is
  * also an additional NULL pointer after the last real line.
  */
-static char **
+char **
 readfile(const char *path, int *numlines)
 {
 	int			fd;
@@ -617,7 +617,7 @@ readfile(const char *path, int *numlines)
 /*
  * Free memory allocated for optlines through readfile()
  */
-static void
+void
 free_readfile(char **optlines)
 {
 	char	   *curr_line = NULL;
