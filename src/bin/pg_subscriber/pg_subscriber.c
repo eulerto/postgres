@@ -1229,6 +1229,7 @@ main(int argc, char **argv)
 
 	int			c;
 	int			option_index;
+	int			rc;
 
 	char	   *pg_ctl_cmd;
 
@@ -1434,8 +1435,6 @@ main(int argc, char **argv)
 	 */
 	if (stat(pidfile, &statbuf) == 0)
 	{
-		int rc;
-
 		if (verbose)
 		{
 			pg_log_info("subscriber is up and running");
