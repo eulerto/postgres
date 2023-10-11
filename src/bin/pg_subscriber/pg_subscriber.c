@@ -701,8 +701,7 @@ pg_ctl_status(const char *pg_ctl_cmd, int rc, int action)
 		{
 #if defined(WIN32)
 			pg_log_error("pg_ctl was terminated by exception 0x%X", WTERMSIG(rc));
-			fprintf(stderr,
-					"See C include file \"ntstatus.h\" for a description of the hexadecimal value.\n");
+			pg_log_error_detail("See C include file \"ntstatus.h\" for a description of the hexadecimal value.");
 #else
 			pg_log_error("pg_ctl was terminated by signal %d: %s",
 						 WTERMSIG(rc), pg_strsignal(WTERMSIG(rc)));
@@ -713,7 +712,7 @@ pg_ctl_status(const char *pg_ctl_cmd, int rc, int action)
 			pg_log_error("pg_ctl exited with unrecognized status %d", rc);
 		}
 
-		fprintf(stderr, "The failed command was: %s\n", pg_ctl_cmd);
+		pg_log_error_detail("The failed command was: %s", pg_ctl_cmd);
 		exit(1);
 	}
 
@@ -822,7 +821,7 @@ wait_postmaster_connection(const char *conninfo)
 	else if (status == POSTMASTER_FAILED)
 	{
 		pg_log_error("could not start server");
-		fprintf(stderr, "Examine the log output.\n");
+		pg_log_error_detail("Examine the log output.");
 		exit(1);
 	}
 
@@ -848,7 +847,7 @@ wait_postmaster_connection(const char *conninfo)
 		if (!postmaster_is_alive((pid_t) pmpid))
 		{
 			pg_log_error("could not start server");
-			fprintf(stderr, "Examine the log output.\n");
+			pg_log_error_detail("Examine the log output.");
 			exit(1);
 		}
 
@@ -1277,8 +1276,8 @@ main(int argc, char **argv)
 	if (geteuid() == 0)
 	{
 		pg_log_error("cannot be executed by \"root\"");
-		fprintf(stderr, _("You must run %s as the PostgreSQL superuser.\n"),
-				progname);
+		pg_log_error_hint("You must run %s as the PostgreSQL superuser.",
+						  progname);
 		exit(1);
 	}
 #endif
@@ -1305,12 +1304,8 @@ main(int argc, char **argv)
 				verbose++;
 				break;
 			default:
-
-				/*
-				 * getopt_long already emitted a complaint
-				 */
-				fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
-						progname);
+				/* getopt_long already emitted a complaint */
+				pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 				exit(1);
 		}
 	}
@@ -1322,8 +1317,7 @@ main(int argc, char **argv)
 	{
 		pg_log_error("too many command-line arguments (first is \"%s\")",
 					 argv[optind]);
-		fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
-				progname);
+		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 		exit(1);
 	}
 
@@ -1333,8 +1327,7 @@ main(int argc, char **argv)
 	if (subscriber_dir == NULL)
 	{
 		pg_log_error("no subscriber data directory specified");
-		fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
-				progname);
+		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 		exit(1);
 	}
 
@@ -1351,8 +1344,7 @@ main(int argc, char **argv)
 		 * not, we would fail anyway.
 		 */
 		pg_log_error("no publisher connection string specified");
-		fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
-				progname);
+		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 		exit(1);
 	}
 	pub_base_conninfo = get_base_conninfo(pub_conninfo_str, dbname_conninfo,
@@ -1363,8 +1355,7 @@ main(int argc, char **argv)
 	if (sub_conninfo_str == NULL)
 	{
 		pg_log_error("no subscriber connection string specified");
-		fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
-				progname);
+		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 		exit(1);
 	}
 	sub_base_conninfo = get_base_conninfo(sub_conninfo_str, NULL, "subscriber");
@@ -1393,8 +1384,7 @@ main(int argc, char **argv)
 		else
 		{
 			pg_log_error("no database name specified");
-			fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
-					progname);
+			pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 			exit(1);
 		}
 	}
