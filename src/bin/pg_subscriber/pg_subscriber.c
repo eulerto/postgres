@@ -543,9 +543,9 @@ modify_sysid(const char *pg_resetwal_path, const char *datadir)
 	update_controlfile(datadir, cf, true);
 
 	if (verbose)
-		pg_log_info("stopping the subscriber");
+		pg_log_info("running pg_resetwal in the subscriber");
 
-	cmd_str = psprintf("\"%s\" -D \"%s\" -s", pg_resetwal_path, datadir);
+	cmd_str = psprintf("\"%s\" -D \"%s\"", pg_resetwal_path, datadir);
 	rc = system(cmd_str);
 	if (rc == 0)
 		pg_log_info("subscriber changed the system identifier successfully");
