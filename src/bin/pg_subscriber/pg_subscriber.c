@@ -109,7 +109,7 @@ enum WaitPMResult
 /*
  * Cleanup objects that were created by pg_subscriber if there is an error.
  *
- * Replication slots, publications and subscriptions are created. Dependind on
+ * Replication slots, publications and subscriptions are created. Depending on
  * the step it failed, it should remove the already created objects if it is
  * possible (sometimes it won't work due to a connection issue).
  */
@@ -548,7 +548,7 @@ modify_sysid(const char *pg_resetwal_path, const char *datadir)
 	cmd_str = psprintf("\"%s\" -D \"%s\"", pg_resetwal_path, datadir);
 	rc = system(cmd_str);
 	if (rc == 0)
-		pg_log_info("subscriber changed the system identifier successfully");
+		pg_log_info("subscriber successfully changed the system identifier");
 	else
 		pg_log_error("subscriber failed to change system identifier: exit code: %d", rc);
 
@@ -766,7 +766,7 @@ wait_postmaster_connection(const char *conninfo)
 	int			status = POSTMASTER_STILL_STARTING;
 
 	if (verbose)
-		pg_log_info("waiting for the postmaster to allow connections ...");
+		pg_log_info("waiting for the postmaster to allow connections");
 
 	/*
 	 * Wait postmaster to come up. XXX this code path is a modified version of
@@ -829,7 +829,7 @@ wait_postmaster_connection(const char *conninfo)
 	if (verbose)
 	{
 		pg_log_info("postmaster is up and running");
-		pg_log_info("waiting until the postmaster accepts connections ...");
+		pg_log_info("waiting until the postmaster accepts connections");
 	}
 
 	/* Postmaster is up. Let's wait for it to accept connections. */
@@ -870,7 +870,7 @@ wait_for_end_recovery(const char *conninfo)
 	int			status = POSTMASTER_STILL_STARTING;
 
 	if (verbose)
-		pg_log_info("waiting the postmaster to reach the consistent state ...");
+		pg_log_info("waiting the postmaster to reach the consistent state");
 
 	conn = connect_database(conninfo, true);
 	if (conn == NULL)
