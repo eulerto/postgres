@@ -1573,5 +1573,8 @@ main(int argc, char **argv)
 
 	success = true;
 
+	if (verbose)
+		pg_log_info("Done!");
+
 	return 0;
 }
