@@ -459,7 +459,8 @@ get_sysid_from_conn(const char *conninfo)
 		pg_log_error("could not send replication command \"%s\": %s",
 					 "IDENTIFY_SYSTEM", PQresultErrorMessage(res));
 		PQclear(res);
-		return 0;				/* FIXME exit(1)? */
+		disconnect_database(conn);
+		exit(1);
 	}
 	if (PQntuples(res) != 1 || PQnfields(res) < 3)
 	{
@@ -467,7 +468,8 @@ get_sysid_from_conn(const char *conninfo)
 					 PQntuples(res), PQnfields(res), 1, 3);
 
 		PQclear(res);
-		return 0;				/* FIXME exit(1)? */
+		disconnect_database(conn);
+		exit(1);
 	}
 
 	sysid = strtou64(PQgetvalue(res, 0, 0), NULL, 10);
@@ -620,7 +622,7 @@ create_all_logical_replication_slots(LogicalRepInfo *dbinfo, int num_dbs)
  * Create a logical replication slot and returns a consistent LSN. The returned
  * LSN might be used to catch up the subscriber up to the required point.
  *
- * XXX CreateReplicationSlot() is not used because it does not provide the one-row
+ * CreateReplicationSlot() is not used because it does not provide the one-row
  * result set that contains the consistent LSN.
  */
 static char *
@@ -769,8 +771,9 @@ wait_postmaster_connection(const char *conninfo)
 		pg_log_info("waiting for the postmaster to allow connections");
 
 	/*
-	 * Wait postmaster to come up. XXX this code path is a modified version of
-	 * wait_for_postmaster().
+	 * Wait postmaster to come up.
+	 *
+	 * XXX this code path is a modified version of wait_for_postmaster().
 	 */
 	for (;;)
 	{
@@ -962,13 +965,15 @@ create_publication(PGconn *conn, LogicalRepInfo *dbinfo)
 		else
 		{
 			/*
-			 * XXX Unfortunately, if it reaches this code path, pg_subscriber
-			 * will always fail here. That's bad but it is not expected that
-			 * the user choose a name with pg_subscriber_ prefix followed by
-			 * the exact database oid in which puballtables is false.
+			 * Unfortunately, if it reaches this code path, it will always fail
+			 * (unless you decide to change the existing publication name).
+			 * That's bad but it is very unlikely that the user will choose a
+			 * name with pg_subscriber_ prefix followed by the exact database
+			 * oid in which puballtables is false.
 			 */
 			pg_log_error("publication \"%s\" does not replicate changes for all tables",
 						 dbinfo->pubname);
+			pg_log_error_hint("Consider renaming this publication.");
 			PQclear(res);
 			PQfinish(conn);
 			exit(1);
@@ -1339,7 +1344,7 @@ main(int argc, char **argv)
 	if (pub_conninfo_str == NULL)
 	{
 		/*
-		 * FIXME use primary_conninfo (if available) from subscriber and
+		 * TODO use primary_conninfo (if available) from subscriber and
 		 * extract publisher connection string. Assume that there are
 		 * identical entries for physical and logical replication. If there is
 		 * not, we would fail anyway.
@@ -1548,14 +1553,20 @@ main(int argc, char **argv)
 	/*
 	 * The transient replication slot is no longer required. Drop it.
 	 *
-	 * FIXME we might not fail here. Instead, provide a warning so the user
+	 * XXX we might not fail here. Instead, we provide a warning so the user
 	 * eventually drops the replication slot later.
 	 */
 	conn = connect_database(dbinfo[0].pubconninfo, true);
 	if (conn == NULL)
-		exit(1);
-	drop_replication_slot(conn, &dbinfo[0], temp_replslot);
-	disconnect_database(conn);
+	{
+		pg_log_warning("could not drop transient replication slot \"%s\" on publisher", temp_replslot);
+		pg_log_warning_hint("Drop this replication slot soon to avoid retention of WAL files.");
+	}
+	else
+	{
+		drop_replication_slot(conn, &dbinfo[0], temp_replslot);
+		disconnect_database(conn);
+	}
 
 	/*
 	 * Stop the subscriber.
