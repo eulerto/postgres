@@ -40,10 +40,10 @@ typedef struct LogicalRepInfo
 	char	   *subname;		/* subscription name (also replication slot
 								 * name) */
 
-	bool		made_replslot;		/* replication slot was created */
+	bool		made_replslot;	/* replication slot was created */
 	bool		made_publication;	/* publication was created */
 	bool		made_subscription;	/* subscription was created */
-}			LogicalRepInfo;
+} LogicalRepInfo;
 
 static void cleanup_objects_atexit(void);
 static void usage();
@@ -83,17 +83,17 @@ static char *pub_conninfo_str = NULL;
 static char *sub_conninfo_str = NULL;
 static SimpleStringList database_names = {NULL, NULL};
 static int	verbose = 0;
-static bool	success = false;
+static bool success = false;
 
-static char	*pg_ctl_path = NULL;
+static char *pg_ctl_path = NULL;
 static char *pg_resetwal_path = NULL;
 
-static LogicalRepInfo  *dbinfo;
+static LogicalRepInfo *dbinfo;
 
-static int		num_dbs = 0;
+static int	num_dbs = 0;
 
-static char		temp_replslot[NAMEDATALEN];
-static bool		made_transient_replslot = false;
+static char temp_replslot[NAMEDATALEN];
+static bool made_transient_replslot = false;
 
 char		pidfile[MAXPGPATH]; /* subscriber PID file */
 
@@ -116,8 +116,8 @@ enum WaitPMResult
 static void
 cleanup_objects_atexit(void)
 {
-	PGconn	*conn;
-	int		i;
+	PGconn	   *conn;
+	int			i;
 
 	if (success)
 		return;
@@ -244,7 +244,7 @@ get_base_conninfo(char *conninfo, char *dbname, const char *noderole)
 static bool
 get_exec_path(const char *path)
 {
-	int		rc;
+	int			rc;
 
 	pg_ctl_path = pg_malloc(MAXPGPATH);
 	rc = find_other_exec(path, "pg_ctl",
@@ -367,9 +367,9 @@ concat_conninfo_dbname(const char *conninfo, const char *dbname)
 static LogicalRepInfo *
 store_pub_sub_info(int num_dbs, char *pub_base_conninfo, char *sub_base_conninfo)
 {
-	LogicalRepInfo	*dbinfo;
+	LogicalRepInfo *dbinfo;
 	SimpleStringListCell *cell;
-	int				i = 0;
+	int			i = 0;
 
 	dbinfo = (LogicalRepInfo *) pg_malloc(num_dbs * sizeof(LogicalRepInfo));
 
@@ -459,7 +459,7 @@ get_sysid_from_conn(const char *conninfo)
 		pg_log_error("could not send replication command \"%s\": %s",
 					 "IDENTIFY_SYSTEM", PQresultErrorMessage(res));
 		PQclear(res);
-		return 0;	/* FIXME exit(1)? */
+		return 0;				/* FIXME exit(1)? */
 	}
 	if (PQntuples(res) != 1 || PQnfields(res) < 3)
 	{
@@ -467,7 +467,7 @@ get_sysid_from_conn(const char *conninfo)
 					 PQntuples(res), PQnfields(res), 1, 3);
 
 		PQclear(res);
-		return 0;	/* FIXME exit(1)? */
+		return 0;				/* FIXME exit(1)? */
 	}
 
 	sysid = strtou64(PQgetvalue(res, 0, 0), NULL, 10);
@@ -518,7 +518,7 @@ modify_sysid(const char *pg_resetwal_path, const char *datadir)
 	bool		crc_ok;
 	struct timeval tv;
 
-	char		*cmd_str;
+	char	   *cmd_str;
 	int			rc;
 
 	if (verbose)
@@ -533,6 +533,7 @@ modify_sysid(const char *pg_resetwal_path, const char *datadir)
 
 	/*
 	 * Select a new system identifier.
+	 *
 	 * XXX this code was extracted from BootStrapXLOG().
 	 */
 	gettimeofday(&tv, NULL);
@@ -558,11 +559,11 @@ modify_sysid(const char *pg_resetwal_path, const char *datadir)
 static bool
 create_all_logical_replication_slots(LogicalRepInfo *dbinfo, int num_dbs)
 {
-	int		i;
+	int			i;
 
 	for (i = 0; i < num_dbs; i++)
 	{
-		PGconn		*conn;
+		PGconn	   *conn;
 		PGresult   *res;
 		char		replslotname[NAMEDATALEN];
 
