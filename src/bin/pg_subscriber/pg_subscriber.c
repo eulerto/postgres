@@ -63,8 +63,6 @@ static char *create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinf
 											 const char *slot_name);
 static void drop_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo, const char *slot_name);
 static void pg_ctl_status(const char *pg_ctl_cmd, int rc, int action);
-static bool postmaster_is_alive(pid_t pid);
-static void wait_postmaster_connection(const char *conninfo);
 static void wait_for_end_recovery(const char *conninfo);
 static void create_publication(PGconn *conn, LogicalRepInfo *dbinfo);
 static void drop_publication(PGconn *conn, LogicalRepInfo *dbinfo);
@@ -729,140 +727,6 @@ pg_ctl_status(const char *pg_ctl_cmd, int rc, int action)
 }
 
 /*
- * XXX This function was copied from pg_ctl.c.
- *
- * We should probably move it to a common place.
- */
-static bool
-postmaster_is_alive(pid_t pid)
-{
-	/*
-	 * Test to see if the process is still there.  Note that we do not
-	 * consider an EPERM failure to mean that the process is still there;
-	 * EPERM must mean that the given PID belongs to some other userid, and
-	 * considering the permissions on $PGDATA, that means it's not the
-	 * postmaster we are after.
-	 *
-	 * Don't believe that our own PID or parent shell's PID is the postmaster,
-	 * either.  (Windows hasn't got getppid(), though.)
-	 */
-	if (pid == getpid())
-		return false;
-#ifndef WIN32
-	if (pid == getppid())
-		return false;
-#endif
-	if (kill(pid, 0) == 0)
-		return true;
-	return false;
-}
-
-/*
- * Returns after postmaster is accepting connections.
- */
-static void
-wait_postmaster_connection(const char *conninfo)
-{
-	PGPing		ret;
-	long		pmpid;
-	int			status = POSTMASTER_STILL_STARTING;
-
-	if (verbose)
-		pg_log_info("waiting for the postmaster to allow connections");
-
-	/*
-	 * Wait postmaster to come up.
-	 *
-	 * XXX this code path is a modified version of wait_for_postmaster().
-	 */
-	for (;;)
-	{
-		char	  **optlines;
-		int			numlines;
-
-		if ((optlines = readfile(pidfile, &numlines)) != NULL &&
-			numlines >= LOCK_FILE_LINE_PM_STATUS)
-		{
-			/*
-			 * Check the status line (this assumes a v10 or later server).
-			 */
-			char	   *pmstatus = optlines[LOCK_FILE_LINE_PM_STATUS - 1];
-
-			pmpid = atol(optlines[LOCK_FILE_LINE_PID - 1]);
-
-			if (strcmp(pmstatus, PM_STATUS_READY) == 0)
-			{
-				free_readfile(optlines);
-				status = POSTMASTER_READY;
-				break;
-			}
-			else if (strcmp(pmstatus, PM_STATUS_STANDBY) == 0)
-			{
-				free_readfile(optlines);
-				status = POSTMASTER_STANDBY;
-				break;
-			}
-		}
-
-		free_readfile(optlines);
-
-		pg_usleep(WAIT_INTERVAL * USEC_PER_SEC);
-	}
-
-	if (verbose)
-		pg_log_info("postmaster.pid is available");
-
-	if (status == POSTMASTER_STILL_STARTING)
-	{
-		pg_log_error("server did not start in time");
-		exit(1);
-	}
-	else if (status == POSTMASTER_STANDBY)
-	{
-		pg_log_error("server is running but hot standby mode is not enabled");
-		exit(1);
-	}
-	else if (status == POSTMASTER_FAILED)
-	{
-		pg_log_error("could not start server");
-		pg_log_error_detail("Examine the log output.");
-		exit(1);
-	}
-
-	if (verbose)
-	{
-		pg_log_info("postmaster is up and running");
-		pg_log_info("waiting until the postmaster accepts connections");
-	}
-
-	/* Postmaster is up. Let's wait for it to accept connections. */
-	for (;;)
-	{
-		ret = PQping(conninfo);
-		if (ret == PQPING_OK)
-			break;
-		else if (ret == PQPING_NO_ATTEMPT)
-			break;
-
-		/*
-		 * Postmaster started but for some reason it crashed leaving a
-		 * postmaster.pid.
-		 */
-		if (!postmaster_is_alive((pid_t) pmpid))
-		{
-			pg_log_error("could not start server");
-			pg_log_error_detail("Examine the log output.");
-			exit(1);
-		}
-
-		pg_usleep(WAIT_INTERVAL * USEC_PER_SEC);
-	}
-
-	if (verbose)
-		pg_log_info("postmaster is accepting connections");
-}
-
-/*
  * Returns after the server finishes the recovery process.
  */
 static void
@@ -1495,7 +1359,6 @@ main(int argc, char **argv)
 	pg_ctl_cmd = psprintf("\"%s\" start -D \"%s\" -s", pg_ctl_path, subscriber_dir);
 	rc = system(pg_ctl_cmd);
 	pg_ctl_status(pg_ctl_cmd, rc, 1);
-	wait_postmaster_connection(dbinfo[0].subconninfo);
 
 	/*
 	 * Waiting the subscriber to be promoted.
