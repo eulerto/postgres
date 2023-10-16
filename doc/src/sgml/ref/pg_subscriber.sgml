@@ -171,8 +171,8 @@ PostgreSQL documentation
      contains a <literal>pg_subscriber</literal> prefix. These replication
      slots will be used by the subscriptions in a future step.  Another
      replication slot is used to get a consistent start location. This
-     consistent LSN will be used (a) as a stopping point in the <xref
-     linkend="guc-recovery-target-lsn"/> parameter and (b) by the
+     consistent LSN will be used as a stopping point in the <xref
+     linkend="guc-recovery-target-lsn"/> parameter and by the
      subscriptions as a replication starting point. It guarantees that no
      transaction will be lost.
     </para>
@@ -205,13 +205,13 @@ PostgreSQL documentation
      <application>pg_subscriber</application> creates one subscription for
      each specified database on the target server. Each subscription name
      contains a <literal>pg_subscriber</literal> prefix. The replication slot
-     name is identical to the subscription name. It also does not copy
-     existing data from the source server. It does not create a replication
-     slot. Instead, it uses the replication slot that was created in a
-     previous step. The subscription is created but it is not enabled yet. The
-     reason is the replication progress must be set to the consistent LSN but
-     replication origin name contains the subscription oid in its name. Hence,
-     the subscription will be enabled in a separate step.
+     name is identical to the subscription name. It does not copy existing data
+     from the source server. It does not create a replication slot. Instead, it
+     uses the replication slot that was created in a previous step. The
+     subscription is created but it is not enabled yet. The reason is the
+     replication progress must be set to the consistent LSN but replication
+     origin name contains the subscription oid in its name. Hence, the
+     subscription will be enabled in a separate step.
     </para>
    </step>
 
@@ -220,8 +220,8 @@ PostgreSQL documentation
      <application>pg_subscriber</application> sets the replication progress to
      the consistent LSN that was obtained in a previous step. When the target
      server started the recovery process, it caught up to the consistent LSN.
-     This is the exact LSN to be used as a initial location for the logical
-     replication.
+     This is the exact LSN to be used as a initial location for each
+     subscription.
     </para>
    </step>
 
@@ -230,6 +230,20 @@ PostgreSQL documentation
      Finally, <application>pg_subscriber</application> enables the subscription
      for each specified database on the target server. The subscription starts
      streaming from the consistent LSN.
+    </para>
+   </step>
+
+   <step>
+    <para>
+     <application>pg_subscriber</application> removes the additional replication
+     slot that was used to get the consistent LSN on the source server.
+    </para>
+   </step>
+
+   <step>
+    <para>
+     <application>pg_subscriber</application> stops the target server to change
+     its system identifier.
     </para>
    </step>
   </procedure>
