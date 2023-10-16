@@ -261,8 +261,8 @@ static char **replace_guc_value(char **lines,
 								const char *guc_name, const char *guc_value,
 								bool mark_as_comment);
 static bool guc_value_requires_quotes(const char *guc_value);
-static char **read_text_file(const char *path);
-static void write_text_file(char *path, char **lines);
+static char **readfile(const char *path);
+static void writefile(char *path, char **lines);
 static FILE *popen_check(const char *command, const char *mode);
 static char *get_id(void);
 static int	get_encoding_id(const char *encoding_name);
@@ -613,7 +613,7 @@ guc_value_requires_quotes(const char *guc_value)
  * The result is a malloc'd array of individually malloc'd strings.
  */
 static char **
-read_text_file(const char *path)
+readfile(const char *path)
 {
 	char	  **result;
 	FILE	   *infile;
@@ -660,7 +660,7 @@ read_text_file(const char *path)
  * so that the resulting configuration files are nicely editable on Windows.
  */
 static void
-write_text_file(char *path, char **lines)
+writefile(char *path, char **lines)
 {
 	FILE	   *out_file;
 	char	  **line;
@@ -1217,7 +1217,7 @@ setup_config(void)
 
 	/* postgresql.conf */
 
-	conflines = read_text_file(conf_file);
+	conflines = readfile(conf_file);
 
 	snprintf(repltok, sizeof(repltok), "%d", n_connections);
 	conflines = replace_guc_value(conflines, "max_connections",
@@ -1363,7 +1363,7 @@ setup_config(void)
 	/* ... and write out the finished postgresql.conf file */
 	snprintf(path, sizeof(path), "%s/postgresql.conf", pg_data);
 
-	write_text_file(path, conflines);
+	writefile(path, conflines);
 	if (chmod(path, pg_file_create_mode) != 0)
 		pg_fatal("could not change permissions of \"%s\": %m", path);
 
@@ -1377,14 +1377,14 @@ setup_config(void)
 
 	sprintf(path, "%s/postgresql.auto.conf", pg_data);
 
-	write_text_file(path, conflines);
+	writefile(path, conflines);
 	if (chmod(path, pg_file_create_mode) != 0)
 		pg_fatal("could not change permissions of \"%s\": %m", path);
 
 
 	/* pg_hba.conf */
 
-	conflines = read_text_file(hba_file);
+	conflines = readfile(hba_file);
 
 	conflines = replace_token(conflines, "@remove-line-for-nolocal@", "");
 
@@ -1444,18 +1444,18 @@ setup_config(void)
 
 	snprintf(path, sizeof(path), "%s/pg_hba.conf", pg_data);
 
-	write_text_file(path, conflines);
+	writefile(path, conflines);
 	if (chmod(path, pg_file_create_mode) != 0)
 		pg_fatal("could not change permissions of \"%s\": %m", path);
 
 
 	/* pg_ident.conf */
 
-	conflines = read_text_file(ident_file);
+	conflines = readfile(ident_file);
 
 	snprintf(path, sizeof(path), "%s/pg_ident.conf", pg_data);
 
-	write_text_file(path, conflines);
+	writefile(path, conflines);
 	if (chmod(path, pg_file_create_mode) != 0)
 		pg_fatal("could not change permissions of \"%s\": %m", path);
 
@@ -1479,7 +1479,7 @@ bootstrap_template1(void)
 	printf(_("running bootstrap script ... "));
 	fflush(stdout);
 
-	bki_lines = read_text_file(bki_file);
+	bki_lines = readfile(bki_file);
 
 	/* Check that bki file appears to be of the right version */
 
@@ -1655,7 +1655,7 @@ setup_run_file(FILE *cmdfd, const char *filename)
 {
 	char	  **lines;
 
-	lines = read_text_file(filename);
+	lines = readfile(filename);
 
 	for (char **line = lines; *line != NULL; line++)
 	{
