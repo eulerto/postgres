@@ -90,7 +90,7 @@ static LogicalRepInfo *dbinfo;
 
 static int	num_dbs = 0;
 
-static char temp_replslot[NAMEDATALEN];
+static char temp_replslot[NAMEDATALEN] = {0};
 static bool made_transient_replslot = false;
 
 char		pidfile[MAXPGPATH]; /* subscriber PID file */
@@ -630,8 +630,20 @@ create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
 	PQExpBuffer str = createPQExpBuffer();
 	PGresult   *res;
 	char	   *lsn = NULL;
+	bool		transient_replslot = false;
 
 	Assert(conn != NULL);
+
+	/*
+	 * If no slot name is informed, it is a transient replication slot used
+	 * only for catch up purposes.
+	 */
+	if (slot_name[0] == '\0')
+	{
+		snprintf(slot_name, sizeof(slot_name), "pg_subscriber_%d_startpoint",
+			 (int) getpid());
+		transient_replslot = true;
+	}
 
 	if (verbose)
 		pg_log_info("creating the replication slot \"%s\" on database \"%s\"", slot_name, dbinfo->dbname);
@@ -651,10 +663,10 @@ create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
 	}
 
 	/* for cleanup purposes */
-	if (slot_name == NULL)
-		dbinfo->made_replslot = true;
-	else
+	if (transient_replslot)
 		made_transient_replslot = true;
+	else
+		dbinfo->made_replslot = true;
 
 	lsn = pg_strdup(PQgetvalue(res, 0, 1));
 
@@ -1328,8 +1340,6 @@ main(int argc, char **argv)
 	conn = connect_database(dbinfo[0].pubconninfo, false);
 	if (conn == NULL)
 		exit(1);
-	snprintf(temp_replslot, sizeof(temp_replslot), "pg_subscriber_%d_startpoint",
-			 (int) getpid());
 	consistent_lsn = create_logical_replication_slot(conn, &dbinfo[0],
 													 temp_replslot);
 
