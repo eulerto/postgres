@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * pg_subscriber.c
- *	  Create a new logical replica from a base backup or a standby server
+ *	  Create a new logical replica from a standby server
  *
  * Copyright (C) 2023, PostgreSQL Global Development Group
  *
@@ -156,7 +156,7 @@ cleanup_objects_atexit(void)
 static void
 usage(void)
 {
-	printf(_("%s creates a new logical replica from a base backup or a standby server.\n\n"),
+	printf(_("%s creates a new logical replica from a standby server.\n\n"),
 		   progname);
 	printf(_("Usage:\n"));
 	printf(_("  %s [OPTION]...\n"), progname);
@@ -506,7 +506,7 @@ get_control_from_datadir(const char *datadir)
 }
 
 /*
- * Modify the system identifier. Since a base backup preserves the system
+ * Modify the system identifier. Since a standby server preserves the system
  * identifier, it makes sense to change it to avoid situations in which WAL
  * files from one of the systems might be used in the other one.
  */
@@ -1293,7 +1293,7 @@ main(int argc, char **argv)
 	sub_sysid = get_control_from_datadir(subscriber_dir);
 	if (pub_sysid != sub_sysid)
 	{
-		pg_log_error("subscriber data directory is not a base backup from the publisher");
+		pg_log_error("subscriber data directory is not a copy of the source database cluster");
 		exit(1);
 	}
 
@@ -1329,10 +1329,14 @@ main(int argc, char **argv)
 	 * Create a logical replication slot to get a consistent LSN.
 	 *
 	 * This consistent LSN will be used later to advanced the recently created
-	 * replication slots. We could probably use the last created replication
-	 * slot, however, if this tool decides to support cloning the publisher
-	 * (via pg_basebackup -- after creating the replication slots), the
-	 * consistent point should be after the pg_basebackup finishes.
+	 * replication slots. We cannot use the last created replication slot
+	 * because the consistent LSN should be obtained *after* the base backup
+	 * finishes (and the base backup should include the logical replication
+	 * slots).
+	 *
+	 * XXX we should probably use the last created replication slot to get a
+	 * consistent LSN but it should be changed after adding pg_basebackup
+	 * support.
 	 *
 	 * A temporary replication slot is not used here to avoid keeping a
 	 * replication connection open (depending when base backup was taken, the

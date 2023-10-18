@@ -1,6 +1,6 @@
 # src/bin/pg_subscriber/Makefile
 
-PGFILEDESC = "pg_subscriber - create a new logical replica from a base backup or a standby server"
+PGFILEDESC = "pg_subscriber - create a new logical replica from a standby server"
 PGAPPICON=win32
 
 subdir = src/bin/pg_subscriber

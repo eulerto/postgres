@@ -16,9 +16,7 @@ PostgreSQL documentation
 
  <refnamediv>
   <refname>pg_subscriber</refname>
-  <refpurpose>create a new logical replica from a base backup of a
-  <productname>PostgreSQL</productname> cluster or a standby
-  server</refpurpose>
+  <refpurpose>create a new logical replica from a standby server</refpurpose>
  </refnamediv>
 
  <refsynopsisdiv>
@@ -32,9 +30,9 @@ PostgreSQL documentation
   <title>Description</title>
   <para>
    <application>pg_subscriber</application> takes the publisher and subscriber
-   connection strings, a base backup directory and a list of database names and
-   it sets up a new logical replica using the physical recovery process. A
-   standby server can also be used.
+   connection strings, a cluster directory from a standby server and a list of
+   database names and it sets up a new logical replica using the physical
+   recovery process.
   </para>
 
   <para>
@@ -58,8 +56,8 @@ PostgreSQL documentation
       <term><option>--pgdata=<replaceable class="parameter">directory</replaceable></option></term>
       <listitem>
        <para>
-        The target directory that contains a base backup. It can also be a
-        cluster directory from a standby server.
+        The target directory that contains a cluster directory from a standby
+        server.
        </para>
       </listitem>
      </varlistentry>
@@ -251,15 +249,6 @@ PostgreSQL documentation
 
  <refsect1>
   <title>Examples</title>
-
-  <para>
-   To create a logical replica for database <literal>bar</literal> from a base
-   backup of the server at <literal>foo</literal>:
-<screen>
-<prompt>$</prompt> <userinput>pg_basebackup -h foo -D /usr/local/pgsql/data</userinput>
-<prompt>$</prompt> <userinput>pg_subscriber -D /usr/local/pgsql/data -P "host=foo" -S "host=localhost" -d bar</userinput>
-</screen>
-  </para>
 
   <para>
    To create a logical replica for databases <literal>hr</literal> and

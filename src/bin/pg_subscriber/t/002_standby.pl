@@ -56,7 +56,7 @@ command_fails(
 		"--database", 'pg1',
 		"--database", 'pg2'
 	],
-	'subscriber data directory is not a base backup from the publisher');
+	'subscriber data directory is not a copy of the source database cluster');
 
 # Run pg_subscriber on node S
 command_ok(

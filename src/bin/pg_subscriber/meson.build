@@ -7,7 +7,7 @@ pg_subscriber_sources = files(
 if host_system == 'windows'
   pg_subscriber_sources += rc_bin_gen.process(win32ver_rc, extra_args: [
 	'--NAME', 'pg_subscriber',
-	'--FILEDESC', 'pg_subscriber - create a new logical replica from a base backup or a standby server',])
+	'--FILEDESC', 'pg_subscriber - create a new logical replica from a standby server',])
 endif
 
 pg_subscriber = executable('pg_subscriber',
