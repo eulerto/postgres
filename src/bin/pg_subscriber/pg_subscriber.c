@@ -52,13 +52,13 @@ static char *get_base_conninfo(char *conninfo, char *dbname,
 static bool get_exec_path(const char *path);
 static bool check_data_directory(const char *datadir);
 static char *concat_conninfo_dbname(const char *conninfo, const char *dbname);
-static LogicalRepInfo *store_pub_sub_info(int num_dbs, char *pub_base_conninfo, char *sub_base_conninfo);
+static LogicalRepInfo *store_pub_sub_info(char *pub_base_conninfo, char *sub_base_conninfo);
 static PGconn *connect_database(const char *conninfo, bool secure_search_path);
 static void disconnect_database(PGconn *conn);
 static uint64 get_sysid_from_conn(const char *conninfo);
 static uint64 get_control_from_datadir(const char *datadir);
 static void modify_sysid(const char *pg_resetwal_path, const char *datadir);
-static bool create_all_logical_replication_slots(LogicalRepInfo *dbinfo, int num_dbs);
+static bool create_all_logical_replication_slots(LogicalRepInfo *dbinfo);
 static char *create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
 											 const char *slot_name);
 static void drop_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo, const char *slot_name);
@@ -75,25 +75,24 @@ static void enable_subscription(PGconn *conn, LogicalRepInfo *dbinfo);
 #define	WAIT_INTERVAL	1		/* 1 second */
 
 /* Options */
-const char *progname;
+static const char *progname;
+
 static char *subscriber_dir = NULL;
 static char *pub_conninfo_str = NULL;
 static char *sub_conninfo_str = NULL;
 static SimpleStringList database_names = {NULL, NULL};
 static int	verbose = 0;
+
 static bool success = false;
 
 static char *pg_ctl_path = NULL;
 static char *pg_resetwal_path = NULL;
 
 static LogicalRepInfo *dbinfo;
-
 static int	num_dbs = 0;
 
 static char temp_replslot[NAMEDATALEN] = {0};
 static bool made_transient_replslot = false;
-
-char		pidfile[MAXPGPATH]; /* subscriber PID file */
 
 enum WaitPMResult
 {
@@ -363,7 +362,7 @@ concat_conninfo_dbname(const char *conninfo, const char *dbname)
  * Store publication and subscription information.
  */
 static LogicalRepInfo *
-store_pub_sub_info(int num_dbs, char *pub_base_conninfo, char *sub_base_conninfo)
+store_pub_sub_info(char *pub_base_conninfo, char *sub_base_conninfo)
 {
 	LogicalRepInfo *dbinfo;
 	SimpleStringListCell *cell;
@@ -557,7 +556,7 @@ modify_sysid(const char *pg_resetwal_path, const char *datadir)
 }
 
 static bool
-create_all_logical_replication_slots(LogicalRepInfo *dbinfo, int num_dbs)
+create_all_logical_replication_slots(LogicalRepInfo *dbinfo)
 {
 	int			i;
 
@@ -1127,6 +1126,8 @@ main(int argc, char **argv)
 
 	PQExpBuffer recoveryconfcontents = NULL;
 
+	char		pidfile[MAXPGPATH];
+
 	int			i;
 
 	pg_logging_init(argv[0]);
@@ -1281,11 +1282,8 @@ main(int argc, char **argv)
 	if (!check_data_directory(subscriber_dir))
 		exit(1);
 
-	/* subscriber PID file. */
-	snprintf(pidfile, MAXPGPATH, "%s/postmaster.pid", subscriber_dir);
-
 	/* Store database information for publisher and subscriber. */
-	dbinfo = store_pub_sub_info(num_dbs, pub_base_conninfo, sub_base_conninfo);
+	dbinfo = store_pub_sub_info(pub_base_conninfo, sub_base_conninfo);
 
 	/*
 	 * Check if the subscriber data directory has the same system identifier
@@ -1298,6 +1296,9 @@ main(int argc, char **argv)
 		pg_log_error("subscriber data directory is not a base backup from the publisher");
 		exit(1);
 	}
+
+	/* subscriber PID file. */
+	snprintf(pidfile, MAXPGPATH, "%s/postmaster.pid", subscriber_dir);
 
 	/*
 	 * Stop the subscriber if it is a standby server. Before executing the
@@ -1321,7 +1322,7 @@ main(int argc, char **argv)
 	/*
 	 * Create a replication slot for each database on the publisher.
 	 */
-	if (!create_all_logical_replication_slots(dbinfo, num_dbs))
+	if (!create_all_logical_replication_slots(dbinfo))
 		exit(1);
 
 	/*
