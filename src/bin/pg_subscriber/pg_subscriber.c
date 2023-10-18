@@ -52,7 +52,7 @@ static char *get_base_conninfo(char *conninfo, char *dbname,
 static bool get_exec_path(const char *path);
 static bool check_data_directory(const char *datadir);
 static char *concat_conninfo_dbname(const char *conninfo, const char *dbname);
-static LogicalRepInfo *store_pub_sub_info(char *pub_base_conninfo, char *sub_base_conninfo);
+static LogicalRepInfo *store_pub_sub_info(const char *pub_base_conninfo, const char *sub_base_conninfo);
 static PGconn *connect_database(const char *conninfo, bool secure_search_path);
 static void disconnect_database(PGconn *conn);
 static uint64 get_sysid_from_conn(const char *conninfo);
@@ -362,7 +362,7 @@ concat_conninfo_dbname(const char *conninfo, const char *dbname)
  * Store publication and subscription information.
  */
 static LogicalRepInfo *
-store_pub_sub_info(char *pub_base_conninfo, char *sub_base_conninfo)
+store_pub_sub_info(const char *pub_base_conninfo, const char *sub_base_conninfo)
 {
 	LogicalRepInfo *dbinfo;
 	SimpleStringListCell *cell;
