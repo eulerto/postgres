@@ -60,7 +60,7 @@ static uint64 get_control_from_datadir(const char *datadir);
 static void modify_sysid(const char *pg_resetwal_path, const char *datadir);
 static bool create_all_logical_replication_slots(LogicalRepInfo *dbinfo);
 static char *create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
-											 const char *slot_name);
+											 char *slot_name);
 static void drop_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo, const char *slot_name);
 static void pg_ctl_status(const char *pg_ctl_cmd, int rc, int action);
 static void wait_for_end_recovery(const char *conninfo);
@@ -624,7 +624,7 @@ create_all_logical_replication_slots(LogicalRepInfo *dbinfo)
  */
 static char *
 create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
-								const char *slot_name)
+								char *slot_name)
 {
 	PQExpBuffer str = createPQExpBuffer();
 	PGresult   *res;
