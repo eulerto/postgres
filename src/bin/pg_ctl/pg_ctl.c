@@ -73,6 +73,7 @@ typedef enum
 
 static bool do_wait = true;
 static int	wait_seconds = DEFAULT_WAIT;
+static bool	wait_forever = false;
 static bool wait_seconds_arg = false;
 static bool silent_mode = false;
 static ShutdownMode shutdown_mode = FAST_MODE;
@@ -593,7 +594,7 @@ wait_for_postmaster_start(pid_t pm_pid, bool do_checkpoint)
 {
 	int			i;
 
-	for (i = 0; i < wait_seconds * WAITS_PER_SEC; i++)
+	for (i = 0; wait_forever || i < wait_seconds * WAITS_PER_SEC; i++)
 	{
 		char	  **optlines;
 		int			numlines;
@@ -710,7 +711,7 @@ wait_for_postmaster_stop(void)
 {
 	int			cnt;
 
-	for (cnt = 0; cnt < wait_seconds * WAITS_PER_SEC; cnt++)
+	for (cnt = 0; wait_forever || cnt < wait_seconds * WAITS_PER_SEC; cnt++)
 	{
 		pid_t		pid;
 
@@ -747,7 +748,7 @@ wait_for_postmaster_promote(void)
 {
 	int			cnt;
 
-	for (cnt = 0; cnt < wait_seconds * WAITS_PER_SEC; cnt++)
+	for (cnt = 0; wait_forever || cnt < wait_seconds * WAITS_PER_SEC; cnt++)
 	{
 		pid_t		pid;
 		DBState		state;
@@ -2412,6 +2413,10 @@ main(int argc, char **argv)
 		do_advice();
 		exit(1);
 	}
+
+	/* negative value means wait forever */
+	if (wait_seconds < 0)
+		wait_forever = true;
 
 	/* Note we put any -D switch into the env var above */
 	pg_config = getenv("PGDATA");

@@ -391,7 +391,8 @@ PostgreSQL documentation
         Specifies the maximum number of seconds to wait when waiting for an
         operation to complete (see option <option>-w</option>).  Defaults to
         the value of the <envar>PGCTLTIMEOUT</envar> environment variable or, if
-        not set, to 60 seconds.
+        not set, to 60 seconds. If set to a negative value, it waits until the
+        operation is completed.
        </para>
       </listitem>
      </varlistentry>
