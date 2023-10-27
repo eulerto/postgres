@@ -654,7 +654,6 @@ CreateReplicationSlot(PGconn *conn, const char *slot_name, const char *plugin,
 		{
 			destroyPQExpBuffer(query);
 			PQclear(res);
-
 			return true;
 		}
 		else

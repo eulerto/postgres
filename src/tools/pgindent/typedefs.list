@@ -1293,9 +1293,9 @@ JsonManifestWALRangeField
 JsonObjectAgg
 JsonObjectConstructor
 JsonOutput
+JsonParseExpr
 JsonParseContext
 JsonParseErrorType
-JsonParseExpr
 JsonPath
 JsonPathBool
 JsonPathExecContext
@@ -1358,7 +1358,6 @@ LINE
 LLVMAttributeRef
 LLVMBasicBlockRef
 LLVMBuilderRef
-LLVMContextRef
 LLVMErrorRef
 LLVMIntPredicate
 LLVMJITEventListenerRef
@@ -1935,6 +1934,7 @@ ParallelHashJoinBatch
 ParallelHashJoinBatchAccessor
 ParallelHashJoinState
 ParallelIndexScanDesc
+ParallelReadyList
 ParallelSlot
 ParallelSlotArray
 ParallelSlotResultHandler
@@ -3025,6 +3025,7 @@ WaitEvent
 WaitEventActivity
 WaitEventBufferPin
 WaitEventClient
+WaitEventExtension
 WaitEventExtensionCounterData
 WaitEventExtensionEntryById
 WaitEventExtensionEntryByName
@@ -3436,7 +3437,6 @@ indexed_tlist
 inet
 inetKEY
 inet_struct
-initRowMethod
 init_function
 inline_cte_walker_context
 inline_error_callback_arg
@@ -3907,6 +3907,7 @@ wchar2mb_with_len_converter
 wchar_t
 win32_deadchild_waitinfo
 wint_t
+worker_spi_state
 worker_state
 worktable
 wrap
