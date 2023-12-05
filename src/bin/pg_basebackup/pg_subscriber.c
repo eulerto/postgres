@@ -694,6 +694,9 @@ drop_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo, const char *slot_nam
 
 	appendPQExpBuffer(str, "DROP_REPLICATION_SLOT \"%s\"", slot_name);
 
+	if (verbose)
+		pg_log_info("command is: %s", str->data);
+
 	res = PQexec(conn, str->data);
 	if (PQresultStatus(res) != PGRES_COMMAND_OK)
 		pg_log_error("could not drop replication slot \"%s\" on database \"%s\": %s", slot_name, dbinfo->dbname,
