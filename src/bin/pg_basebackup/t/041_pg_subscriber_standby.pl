@@ -20,53 +20,78 @@ $node_p->init(allows_streaming => 'logical');
 $node_p->start;
 
 # Set up node F as about-to-fail node
+# The extra option forces it to initialize a new cluster instead of copying a
+# previously initdb's cluster.
 $node_f = PostgreSQL::Test::Cluster->new('node_f');
-$node_f->init(allows_streaming => 'logical');
+$node_f->init(allows_streaming => 'logical', extra => [ '--no-instructions' ]);
 $node_f->start;
 
-# Create databases
-# Create a test table and insert a row in primary server
+# On node P
+# - create databases
+# - create test tables
+# - insert a row
 $node_p->safe_psql(
 	'postgres', q(
 	CREATE DATABASE pg1;
 	CREATE DATABASE pg2;
 ));
-$node_p->safe_psql('pg1', "CREATE TABLE tbl1 (a text)");
+$node_p->safe_psql('pg1', 'CREATE TABLE tbl1 (a text)');
 $node_p->safe_psql('pg1', "INSERT INTO tbl1 VALUES('first row')");
-$node_p->safe_psql('pg2', "CREATE TABLE tbl2 (a text)");
+$node_p->safe_psql('pg2', 'CREATE TABLE tbl2 (a text)');
 
 # Set up node S as standby linking to node P
 $node_p->backup('backup_1');
 $node_s = PostgreSQL::Test::Cluster->new('node_s');
 $node_s->init_from_backup($node_p, 'backup_1', has_streaming => 1);
+$node_s->append_conf('postgresql.conf', 'log_min_messages = debug2');
 $node_s->set_standby_mode();
 $node_s->start;
 
-# Insert another row on P and wait standby S to catch up
+# Insert another row on node P and wait node S to catch up
 $node_p->safe_psql('pg1', "INSERT INTO tbl1 VALUES('second row')");
 $node_p->wait_for_replay_catchup($node_s);
 
-# Run pg_subscriber on about-to-fail node (F)
+# Run pg_subscriber on about-to-fail node F
 command_fails(
 	[
-		'pg_subscriber', "--verbose",
-		"--pgdata", $node_f->data_dir,
-		"--publisher-conninfo", $node_p->connstr('pg1'),
-		"--subscriber-conninfo", $node_f->connstr('pg1'),
-		"--database", 'pg1',
-		"--database", 'pg2'
+		'pg_subscriber', '--verbose',
+		'--pgdata', $node_f->data_dir,
+		'--publisher-conninfo', $node_p->connstr('pg1'),
+		'--subscriber-conninfo', $node_f->connstr('pg1'),
+		'--database', 'pg1',
+		'--database', 'pg2'
 	],
 	'subscriber data directory is not a copy of the source database cluster');
+
+# dry run mode on node S
+command_ok(
+	[
+		'pg_subscriber', '--verbose', '--dry-run',
+		'--pgdata', $node_s->data_dir,
+		'--publisher-conninfo', $node_p->connstr('pg1'),
+		'--subscriber-conninfo', $node_s->connstr('pg1'),
+		'--database', 'pg1',
+		'--database', 'pg2'
+	],
+	'run pg_subscriber --dry-run on node S');
+
+# PID sets to undefined because subscriber was stopped behind the scenes.
+# Start subscriber
+$node_s->{_pid} = undef;
+$node_s->start;
+# Check if node S is still a standby
+is($node_s->safe_psql('postgres', 'SELECT pg_is_in_recovery()'),
+	't', 'standby is in recovery');
 
 # Run pg_subscriber on node S
 command_ok(
 	[
-		'pg_subscriber', "--verbose",
-		"--pgdata", $node_s->data_dir,
-		"--publisher-conninfo", $node_p->connstr('pg1'),
-		"--subscriber-conninfo", $node_s->connstr('pg1'),
-		"--database", 'pg1',
-		"--database", 'pg2'
+		'pg_subscriber', '--verbose',
+		'--pgdata', $node_s->data_dir,
+		'--publisher-conninfo', $node_p->connstr('pg1'),
+		'--subscriber-conninfo', $node_s->connstr('pg1'),
+		'--database', 'pg1',
+		'--database', 'pg2'
 	],
 	'run pg_subscriber on node S');
 
@@ -91,20 +116,20 @@ $node_s->wait_for_subscription_sync($node_p, $subnames[0]);
 $node_s->wait_for_subscription_sync($node_p, $subnames[1]);
 
 # Check result on database pg1
-$result = $node_s->safe_psql('pg1', "SELECT * FROM tbl1");
+$result = $node_s->safe_psql('pg1', 'SELECT * FROM tbl1');
 is( $result, qq(first row
 second row
 third row),
 	'logical replication works on database pg1');
 
 # Check result on database pg2
-$result = $node_s->safe_psql('pg2', "SELECT * FROM tbl2");
+$result = $node_s->safe_psql('pg2', 'SELECT * FROM tbl2');
 is( $result, qq(row 1),
 	'logical replication works on database pg2');
 
 # Different system identifier?
-my $sysid_p = $node_p->safe_psql('postgres', "SELECT system_identifier FROM pg_control_system()");
-my $sysid_s = $node_s->safe_psql('postgres', "SELECT system_identifier FROM pg_control_system()");
+my $sysid_p = $node_p->safe_psql('postgres', 'SELECT system_identifier FROM pg_control_system()');
+my $sysid_s = $node_s->safe_psql('postgres', 'SELECT system_identifier FROM pg_control_system()');
 ok($sysid_p != $sysid_s, 'system identifier was changed');
 
 # clean up

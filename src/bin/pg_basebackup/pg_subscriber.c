@@ -83,7 +83,6 @@ static char *pub_conninfo_str = NULL;
 static char *sub_conninfo_str = NULL;
 static SimpleStringList database_names = {NULL, NULL};
 static bool dry_run = false;
-static int	verbose = 0;
 
 static bool success = false;
 
@@ -196,8 +195,7 @@ get_base_conninfo(char *conninfo, char *dbname, const char *noderole)
 	char	   *ret;
 	int			i;
 
-	if (verbose)
-		pg_log_info("validating connection string on %s", noderole);
+	pg_log_info("validating connection string on %s", noderole);
 
 	conn_opts = PQconninfoParse(conninfo, &errmsg);
 	if (conn_opts == NULL)
@@ -269,8 +267,7 @@ get_exec_path(const char *path)
 		return false;
 	}
 
-	if (verbose)
-		pg_log_debug("pg_ctl path is: %s", pg_ctl_path);
+	pg_log_debug("pg_ctl path is: %s", pg_ctl_path);
 
 	pg_resetwal_path = pg_malloc(MAXPGPATH);
 	rc = find_other_exec(path, "pg_resetwal",
@@ -295,8 +292,7 @@ get_exec_path(const char *path)
 		return false;
 	}
 
-	if (verbose)
-		pg_log_debug("pg_resetwal path is: %s", pg_resetwal_path);
+	pg_log_debug("pg_resetwal path is: %s", pg_resetwal_path);
 
 	return true;
 }
@@ -312,8 +308,7 @@ check_data_directory(const char *datadir)
 	struct stat statbuf;
 	char		versionfile[MAXPGPATH];
 
-	if (verbose)
-		pg_log_info("checking if directory \"%s\" is a cluster data directory",
+	pg_log_info("checking if directory \"%s\" is a cluster data directory",
 					datadir);
 
 	if (stat(datadir, &statbuf) != 0)
@@ -443,8 +438,7 @@ get_sysid_from_conn(const char *conninfo)
 	PGresult   *res;
 	uint64		sysid;
 
-	if (verbose)
-		pg_log_info("getting system identifier from publisher");
+	pg_log_info("getting system identifier from publisher");
 
 	conn = connect_database(conninfo);
 	if (conn == NULL)
@@ -471,8 +465,7 @@ get_sysid_from_conn(const char *conninfo)
 
 	sysid = strtou64(PQgetvalue(res, 0, 0), NULL, 10);
 
-	if (verbose)
-		pg_log_info("system identifier is %ld on publisher", sysid);
+	pg_log_info("system identifier is %ld on publisher", sysid);
 
 	disconnect_database(conn);
 
@@ -491,8 +484,7 @@ get_control_from_datadir(const char *datadir)
 	bool		crc_ok;
 	uint64		sysid;
 
-	if (verbose)
-		pg_log_info("getting system identifier from subscriber");
+	pg_log_info("getting system identifier from subscriber");
 
 	cf = get_controlfile(datadir, &crc_ok);
 	if (!crc_ok)
@@ -503,8 +495,7 @@ get_control_from_datadir(const char *datadir)
 
 	sysid = cf->system_identifier;
 
-	if (verbose)
-		pg_log_info("system identifier is %ld on subscriber", sysid);
+	pg_log_info("system identifier is %ld on subscriber", sysid);
 
 	pfree(cf);
 
@@ -526,8 +517,7 @@ modify_sysid(const char *pg_resetwal_path, const char *datadir)
 	char	   *cmd_str;
 	int			rc;
 
-	if (verbose)
-		pg_log_info("modifying system identifier from subscriber");
+	pg_log_info("modifying system identifier from subscriber");
 
 	cf = get_controlfile(datadir, &crc_ok);
 	if (!crc_ok)
@@ -549,16 +539,13 @@ modify_sysid(const char *pg_resetwal_path, const char *datadir)
 	if (!dry_run)
 		update_controlfile(datadir, cf, true);
 
-	if (verbose)
-		pg_log_info("system identifier is %ld on subscriber", cf->system_identifier);
+	pg_log_info("system identifier is %ld on subscriber", cf->system_identifier);
 
-	if (verbose)
-		pg_log_info("running pg_resetwal on the subscriber");
+	pg_log_info("running pg_resetwal on the subscriber");
 
 	cmd_str = psprintf("\"%s\" -D \"%s\"", pg_resetwal_path, datadir);
 
-	if (verbose)
-		pg_log_debug("command is: %s", cmd_str);
+	pg_log_debug("command is: %s", cmd_str);
 
 	if (!dry_run)
 	{
@@ -661,14 +648,12 @@ create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
 		transient_replslot = true;
 	}
 
-	if (verbose)
-		pg_log_info("creating the replication slot \"%s\" on database \"%s\"", slot_name, dbinfo->dbname);
+	pg_log_info("creating the replication slot \"%s\" on database \"%s\"", slot_name, dbinfo->dbname);
 
 	appendPQExpBuffer(str, "CREATE_REPLICATION_SLOT \"%s\"", slot_name);
 	appendPQExpBufferStr(str, " LOGICAL \"pgoutput\" NOEXPORT_SNAPSHOT");
 
-	if (verbose)
-		pg_log_debug("command is: %s", str->data);
+	pg_log_debug("command is: %s", str->data);
 
 	if (!dry_run)
 	{
@@ -706,13 +691,11 @@ drop_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo, const char *slot_nam
 
 	Assert(conn != NULL);
 
-	if (verbose)
-		pg_log_info("dropping the replication slot \"%s\" on database \"%s\"", slot_name, dbinfo->dbname);
+	pg_log_info("dropping the replication slot \"%s\" on database \"%s\"", slot_name, dbinfo->dbname);
 
 	appendPQExpBuffer(str, "DROP_REPLICATION_SLOT \"%s\"", slot_name);
 
-	if (verbose)
-		pg_log_debug("command is: %s", str->data);
+	pg_log_debug("command is: %s", str->data);
 
 	if (!dry_run)
 	{
@@ -758,13 +741,10 @@ pg_ctl_status(const char *pg_ctl_cmd, int rc, int action)
 		exit(1);
 	}
 
-	if (verbose)
-	{
-		if (action)
-			pg_log_info("postmaster was started");
-		else
-			pg_log_info("postmaster was stopped");
-	}
+	if (action)
+		pg_log_info("postmaster was started");
+	else
+		pg_log_info("postmaster was stopped");
 }
 
 /*
@@ -777,8 +757,7 @@ wait_for_end_recovery(const char *conninfo)
 	PGresult   *res;
 	int			status = POSTMASTER_STILL_STARTING;
 
-	if (verbose)
-		pg_log_info("waiting the postmaster to reach the consistent state");
+	pg_log_info("waiting the postmaster to reach the consistent state");
 
 	conn = connect_database(conninfo);
 	if (conn == NULL)
@@ -829,8 +808,7 @@ wait_for_end_recovery(const char *conninfo)
 		exit(1);
 	}
 
-	if (verbose)
-		pg_log_info("postmaster reached the consistent state");
+	pg_log_info("postmaster reached the consistent state");
 }
 
 /*
@@ -867,8 +845,7 @@ create_publication(PGconn *conn, LogicalRepInfo *dbinfo)
 		 */
 		if (strcmp(PQgetvalue(res, 0, 0), "t") == 0)
 		{
-			if (verbose)
-				pg_log_info("publication \"%s\" already exists", dbinfo->pubname);
+			pg_log_info("publication \"%s\" already exists", dbinfo->pubname);
 			return;
 		}
 		else
@@ -892,13 +869,11 @@ create_publication(PGconn *conn, LogicalRepInfo *dbinfo)
 	PQclear(res);
 	resetPQExpBuffer(str);
 
-	if (verbose)
-		pg_log_info("creating publication \"%s\" on database \"%s\"", dbinfo->pubname, dbinfo->dbname);
+	pg_log_info("creating publication \"%s\" on database \"%s\"", dbinfo->pubname, dbinfo->dbname);
 
 	appendPQExpBuffer(str, "CREATE PUBLICATION %s FOR ALL TABLES", dbinfo->pubname);
 
-	if (verbose)
-		pg_log_debug("command is: %s", str->data);
+	pg_log_debug("command is: %s", str->data);
 
 	if (!dry_run)
 	{
@@ -932,13 +907,11 @@ drop_publication(PGconn *conn, LogicalRepInfo *dbinfo)
 
 	Assert(conn != NULL);
 
-	if (verbose)
-		pg_log_info("dropping publication \"%s\" on database \"%s\"", dbinfo->pubname, dbinfo->dbname);
+	pg_log_info("dropping publication \"%s\" on database \"%s\"", dbinfo->pubname, dbinfo->dbname);
 
 	appendPQExpBuffer(str, "DROP PUBLICATION %s", dbinfo->pubname);
 
-	if (verbose)
-		pg_log_debug("command is: %s", str->data);
+	pg_log_debug("command is: %s", str->data);
 
 	if (!dry_run)
 	{
@@ -972,16 +945,14 @@ create_subscription(PGconn *conn, LogicalRepInfo *dbinfo)
 
 	Assert(conn != NULL);
 
-	if (verbose)
-		pg_log_info("creating subscription \"%s\" on database \"%s\"", dbinfo->subname, dbinfo->dbname);
+	pg_log_info("creating subscription \"%s\" on database \"%s\"", dbinfo->subname, dbinfo->dbname);
 
 	appendPQExpBuffer(str,
 					  "CREATE SUBSCRIPTION %s CONNECTION '%s' PUBLICATION %s "
 					  "WITH (create_slot = false, copy_data = false, enabled = false)",
 					  dbinfo->subname, dbinfo->pubconninfo, dbinfo->pubname);
 
-	if (verbose)
-		pg_log_debug("command is: %s", str->data);
+	pg_log_debug("command is: %s", str->data);
 
 	if (!dry_run)
 	{
@@ -1015,13 +986,11 @@ drop_subscription(PGconn *conn, LogicalRepInfo *dbinfo)
 
 	Assert(conn != NULL);
 
-	if (verbose)
-		pg_log_info("dropping subscription \"%s\" on database \"%s\"", dbinfo->subname, dbinfo->dbname);
+	pg_log_info("dropping subscription \"%s\" on database \"%s\"", dbinfo->subname, dbinfo->dbname);
 
 	appendPQExpBuffer(str, "DROP SUBSCRIPTION %s", dbinfo->subname);
 
-	if (verbose)
-		pg_log_debug("command is: %s", str->data);
+	pg_log_debug("command is: %s", str->data);
 
 	if (!dry_run)
 	{
@@ -1096,16 +1065,14 @@ set_replication_progress(PGconn *conn, LogicalRepInfo *dbinfo, const char *lsn)
 
 	PQclear(res);
 
-	if (verbose)
-		pg_log_info("setting the replication progress (node name \"%s\" ; LSN %s) on database \"%s\"",
+	pg_log_info("setting the replication progress (node name \"%s\" ; LSN %s) on database \"%s\"",
 					originname, lsnstr, dbinfo->dbname);
 
 	resetPQExpBuffer(str);
 	appendPQExpBuffer(str,
 					  "SELECT pg_catalog.pg_replication_origin_advance('%s', '%s')", originname, lsnstr);
 
-	if (verbose)
-		pg_log_debug("command is: %s", str->data);
+	pg_log_debug("command is: %s", str->data);
 
 	if (!dry_run)
 	{
@@ -1139,13 +1106,11 @@ enable_subscription(PGconn *conn, LogicalRepInfo *dbinfo)
 
 	Assert(conn != NULL);
 
-	if (verbose)
-		pg_log_info("enabling subscription \"%s\" on database \"%s\"", dbinfo->subname, dbinfo->dbname);
+	pg_log_info("enabling subscription \"%s\" on database \"%s\"", dbinfo->subname, dbinfo->dbname);
 
 	appendPQExpBuffer(str, "ALTER SUBSCRIPTION %s ENABLE", dbinfo->subname);
 
-	if (verbose)
-		pg_log_debug("command is: %s", str->data);
+	pg_log_debug("command is: %s", str->data);
 
 	if (!dry_run)
 	{
@@ -1204,6 +1169,7 @@ main(int argc, char **argv)
 	int			i;
 
 	pg_logging_init(argv[0]);
+	pg_logging_set_level(PG_LOG_WARNING);
 	progname = get_progname(argv[0]);
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pg_subscriber"));
 
@@ -1260,7 +1226,7 @@ main(int argc, char **argv)
 				dry_run = true;
 				break;
 			case 'v':
-				verbose++;
+				pg_logging_increase_verbosity();
 				break;
 			default:
 				/* getopt_long already emitted a complaint */
@@ -1323,8 +1289,7 @@ main(int argc, char **argv)
 
 	if (database_names.head == NULL)
 	{
-		if (verbose)
-			pg_log_info("no database was specified");
+		pg_log_info("no database was specified");
 
 		/*
 		 * If --database option is not provided, try to obtain the dbname from
@@ -1336,8 +1301,7 @@ main(int argc, char **argv)
 			simple_string_list_append(&database_names, dbname_conninfo);
 			num_dbs++;
 
-			if (verbose)
-				pg_log_info("database \"%s\" was extracted from the publisher connection string",
+			pg_log_info("database \"%s\" was extracted from the publisher connection string",
 							dbname_conninfo);
 		}
 		else
@@ -1384,11 +1348,8 @@ main(int argc, char **argv)
 	 */
 	if (stat(pidfile, &statbuf) == 0)
 	{
-		if (verbose)
-		{
-			pg_log_info("subscriber is up and running");
-			pg_log_info("stopping the server to start the transformation steps");
-		}
+		pg_log_info("subscriber is up and running");
+		pg_log_info("stopping the server to start the transformation steps");
 
 		pg_ctl_cmd = psprintf("\"%s\" stop -D \"%s\" -s", pg_ctl_path, subscriber_dir);
 		rc = system(pg_ctl_cmd);
@@ -1452,14 +1413,12 @@ main(int argc, char **argv)
 	}
 	disconnect_database(conn);
 
-	if (verbose)
-		pg_log_debug("recovery parameters:\n%s", recoveryconfcontents->data);
+	pg_log_debug("recovery parameters:\n%s", recoveryconfcontents->data);
 
 	/*
 	 * Start subscriber and wait until accepting connections.
 	 */
-	if (verbose)
-		pg_log_info("starting the subscriber");
+	pg_log_info("starting the subscriber");
 
 	pg_ctl_cmd = psprintf("\"%s\" start -D \"%s\" -s", pg_ctl_path, subscriber_dir);
 	rc = system(pg_ctl_cmd);
@@ -1539,8 +1498,7 @@ main(int argc, char **argv)
 	/*
 	 * Stop the subscriber.
 	 */
-	if (verbose)
-		pg_log_info("stopping the subscriber");
+	pg_log_info("stopping the subscriber");
 
 	pg_ctl_cmd = psprintf("\"%s\" stop -D \"%s\" -s", pg_ctl_path, subscriber_dir);
 	rc = system(pg_ctl_cmd);
@@ -1553,8 +1511,7 @@ main(int argc, char **argv)
 
 	success = true;
 
-	if (verbose)
-		pg_log_info("Done!");
+	pg_log_info("Done!");
 
 	return 0;
 }

@@ -26,6 +26,7 @@ command_fails(
 command_fails(
 	[
 		'pg_subscriber',
+		'--dry-run',
 		'--pgdata', $datadir,
 		'--publisher-conninfo', 'dbname=postgres'
 	],
@@ -33,6 +34,7 @@ command_fails(
 command_fails(
 	[
 		'pg_subscriber',
+		'--verbose',
 		'--pgdata', $datadir,
 		'--publisher-conninfo', 'dbname=postgres',
 		'--subscriber-conninfo', 'dbname=postgres'
