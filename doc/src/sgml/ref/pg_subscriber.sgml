@@ -61,6 +61,7 @@ PostgreSQL documentation
        </para>
       </listitem>
      </varlistentry>
+
      <varlistentry>
       <term><option>-P  <replaceable class="parameter">conninfo</replaceable></option></term>
       <term><option>--publisher-conninfo=<replaceable class="parameter">conninfo</replaceable></option></term>
@@ -70,6 +71,7 @@ PostgreSQL documentation
        </para>
       </listitem>
      </varlistentry>
+
      <varlistentry>
       <term><option>-S <replaceable class="parameter">conninfo</replaceable></option></term>
       <term><option>--subscriber-conninfo=<replaceable class="parameter">conninfo</replaceable></option></term>
@@ -79,6 +81,7 @@ PostgreSQL documentation
        </para>
       </listitem>
      </varlistentry>
+
      <varlistentry>
       <term><option>-d <replaceable class="parameter">dbname</replaceable></option></term>
       <term><option>--database=<replaceable class="parameter">dbname</replaceable></option></term>
@@ -86,6 +89,16 @@ PostgreSQL documentation
        <para>
         The database name to create the subscription. Multiple databases can be
         selected by writing multiple <option>-d</option> switches.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-n</option></term>
+      <term><option>--dry-run</option></term>
+      <listitem>
+       <para>
+        Do everything except actually modifying the target directory.
        </para>
       </listitem>
      </varlistentry>

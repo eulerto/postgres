@@ -18,6 +18,7 @@
 #include <sys/wait.h>
 #include <time.h>
 
+#include "access/xlogdefs.h"
 #include "catalog/pg_control.h"
 #include "common/connect.h"
 #include "common/controldata_utils.h"
@@ -81,6 +82,7 @@ static char *subscriber_dir = NULL;
 static char *pub_conninfo_str = NULL;
 static char *sub_conninfo_str = NULL;
 static SimpleStringList database_names = {NULL, NULL};
+static bool dry_run = false;
 static int	verbose = 0;
 
 static bool success = false;
@@ -165,6 +167,7 @@ usage(void)
 	printf(_(" -P, --publisher-conninfo=CONNINFO   publisher connection string\n"));
 	printf(_(" -S, --subscriber-conninfo=CONNINFO  subscriber connection string\n"));
 	printf(_(" -d, --database=DBNAME               database to create a subscription\n"));
+	printf(_(" -n, --dry-run                       stop before modifying anything\n"));
 	printf(_(" -v, --verbose                       output verbose messages\n"));
 	printf(_(" -V, --version                       output version information, then exit\n"));
 	printf(_(" -?, --help                          show this help, then exit\n"));
@@ -469,7 +472,7 @@ get_sysid_from_conn(const char *conninfo)
 	sysid = strtou64(PQgetvalue(res, 0, 0), NULL, 10);
 
 	if (verbose)
-		pg_log_info("publisher: system identifier: %ld", sysid);
+		pg_log_info("system identifier is %ld on publisher", sysid);
 
 	disconnect_database(conn);
 
@@ -501,7 +504,7 @@ get_control_from_datadir(const char *datadir)
 	sysid = cf->system_identifier;
 
 	if (verbose)
-		pg_log_info("subscriber: system identifier: %ld", sysid);
+		pg_log_info("system identifier is %ld on subscriber", sysid);
 
 	pfree(cf);
 
@@ -543,20 +546,28 @@ modify_sysid(const char *pg_resetwal_path, const char *datadir)
 	cf->system_identifier |= ((uint64) tv.tv_usec) << 12;
 	cf->system_identifier |= getpid() & 0xFFF;
 
-	update_controlfile(datadir, cf, true);
+	if (!dry_run)
+		update_controlfile(datadir, cf, true);
 
 	if (verbose)
 		pg_log_info("running pg_resetwal in the subscriber");
 
 	cmd_str = psprintf("\"%s\" -D \"%s\"", pg_resetwal_path, datadir);
-	rc = system(cmd_str);
-	if (rc == 0)
-		pg_log_info("subscriber successfully changed the system identifier");
-	else
-		pg_log_error("subscriber failed to change system identifier: exit code: %d", rc);
 
 	if (verbose)
-		pg_log_info("subscriber: system identifier: %ld", cf->system_identifier);
+		pg_log_info("command is: %s", cmd_str);
+
+	if (!dry_run)
+	{
+		rc = system(cmd_str);
+		if (rc == 0)
+			pg_log_info("subscriber successfully changed the system identifier");
+		else
+			pg_log_error("subscriber failed to change system identifier: exit code: %d", rc);
+	}
+
+	if (verbose)
+		pg_log_info("system identifier is %ld on subscriber", cf->system_identifier);
 
 	pfree(cf);
 }
@@ -610,7 +621,7 @@ create_all_logical_replication_slots(LogicalRepInfo *dbinfo)
 		dbinfo[i].subname = pg_strdup(replslotname);
 
 		/* Create replication slot on publisher. */
-		if (create_logical_replication_slot(conn, &dbinfo[i], replslotname) != NULL)
+		if (create_logical_replication_slot(conn, &dbinfo[i], replslotname) != NULL || dry_run)
 			pg_log_info("create replication slot \"%s\" on publisher", replslotname);
 		else
 			return false;
@@ -659,12 +670,15 @@ create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
 	if (verbose)
 		pg_log_info("command is: %s", str->data);
 
-	res = PQexec(conn, str->data);
-	if (PQresultStatus(res) != PGRES_TUPLES_OK)
+	if (!dry_run)
 	{
-		pg_log_error("could not create replication slot \"%s\" on database \"%s\": %s", slot_name, dbinfo->dbname,
-					 PQresultErrorMessage(res));
-		return lsn;
+		res = PQexec(conn, str->data);
+		if (PQresultStatus(res) != PGRES_TUPLES_OK)
+		{
+			pg_log_error("could not create replication slot \"%s\" on database \"%s\": %s", slot_name, dbinfo->dbname,
+						 PQresultErrorMessage(res));
+			return lsn;
+		}
 	}
 
 	/* for cleanup purposes */
@@ -673,9 +687,12 @@ create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
 	else
 		dbinfo->made_replslot = true;
 
-	lsn = pg_strdup(PQgetvalue(res, 0, 1));
+	if (!dry_run)
+	{
+		lsn = pg_strdup(PQgetvalue(res, 0, 1));
+		PQclear(res);
+	}
 
-	PQclear(res);
 	destroyPQExpBuffer(str);
 
 	return lsn;
@@ -697,12 +714,16 @@ drop_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo, const char *slot_nam
 	if (verbose)
 		pg_log_info("command is: %s", str->data);
 
-	res = PQexec(conn, str->data);
-	if (PQresultStatus(res) != PGRES_COMMAND_OK)
-		pg_log_error("could not drop replication slot \"%s\" on database \"%s\": %s", slot_name, dbinfo->dbname,
-					 PQerrorMessage(conn));
+	if (!dry_run)
+	{
+		res = PQexec(conn, str->data);
+		if (PQresultStatus(res) != PGRES_COMMAND_OK)
+			pg_log_error("could not drop replication slot \"%s\" on database \"%s\": %s", slot_name, dbinfo->dbname,
+						 PQerrorMessage(conn));
 
-	PQclear(res);
+		PQclear(res);
+	}
+
 	destroyPQExpBuffer(str);
 }
 
@@ -785,8 +806,12 @@ wait_for_end_recovery(const char *conninfo)
 
 		PQclear(res);
 
-		/* Does the recovery process finish? */
-		if (!in_recovery)
+		/*
+		 * Does the recovery process finish?
+		 * In dry run mode, there is no recovery mode. Bail out as the recovery
+		 * process has ended.
+		 */
+		if (!in_recovery || dry_run)
 		{
 			status = POSTMASTER_READY;
 			break;
@@ -875,19 +900,24 @@ create_publication(PGconn *conn, LogicalRepInfo *dbinfo)
 	if (verbose)
 		pg_log_info("command is: %s", str->data);
 
-	res = PQexec(conn, str->data);
-	if (PQresultStatus(res) != PGRES_COMMAND_OK)
+	if (!dry_run)
 	{
-		pg_log_error("could not create publication \"%s\" on database \"%s\": %s",
-					 dbinfo->pubname, dbinfo->dbname, PQerrorMessage(conn));
-		PQfinish(conn);
-		exit(1);
+		res = PQexec(conn, str->data);
+		if (PQresultStatus(res) != PGRES_COMMAND_OK)
+		{
+			pg_log_error("could not create publication \"%s\" on database \"%s\": %s",
+						 dbinfo->pubname, dbinfo->dbname, PQerrorMessage(conn));
+			PQfinish(conn);
+			exit(1);
+		}
 	}
 
 	/* for cleanup purposes */
 	dbinfo->made_publication = true;
 
-	PQclear(res);
+	if (!dry_run)
+		PQclear(res);
+
 	destroyPQExpBuffer(str);
 }
 
@@ -910,11 +940,15 @@ drop_publication(PGconn *conn, LogicalRepInfo *dbinfo)
 	if (verbose)
 		pg_log_info("command is: %s", str->data);
 
-	res = PQexec(conn, str->data);
-	if (PQresultStatus(res) != PGRES_COMMAND_OK)
-		pg_log_error("could not drop publication \"%s\" on database \"%s\": %s", dbinfo->pubname, dbinfo->dbname, PQerrorMessage(conn));
+	if (!dry_run)
+	{
+		res = PQexec(conn, str->data);
+		if (PQresultStatus(res) != PGRES_COMMAND_OK)
+			pg_log_error("could not drop publication \"%s\" on database \"%s\": %s", dbinfo->pubname, dbinfo->dbname, PQerrorMessage(conn));
 
-	PQclear(res);
+		PQclear(res);
+	}
+
 	destroyPQExpBuffer(str);
 }
 
@@ -949,19 +983,24 @@ create_subscription(PGconn *conn, LogicalRepInfo *dbinfo)
 	if (verbose)
 		pg_log_info("command is: %s", str->data);
 
-	res = PQexec(conn, str->data);
-	if (PQresultStatus(res) != PGRES_COMMAND_OK)
+	if (!dry_run)
 	{
-		pg_log_error("could not create subscription \"%s\" on database \"%s\": %s",
-					 dbinfo->subname, dbinfo->dbname, PQerrorMessage(conn));
-		PQfinish(conn);
-		exit(1);
+		res = PQexec(conn, str->data);
+		if (PQresultStatus(res) != PGRES_COMMAND_OK)
+		{
+			pg_log_error("could not create subscription \"%s\" on database \"%s\": %s",
+						 dbinfo->subname, dbinfo->dbname, PQerrorMessage(conn));
+			PQfinish(conn);
+			exit(1);
+		}
 	}
 
 	/* for cleanup purposes */
 	dbinfo->made_subscription = true;
 
-	PQclear(res);
+	if (!dry_run)
+		PQclear(res);
+
 	destroyPQExpBuffer(str);
 }
 
@@ -984,11 +1023,15 @@ drop_subscription(PGconn *conn, LogicalRepInfo *dbinfo)
 	if (verbose)
 		pg_log_info("command is: %s", str->data);
 
-	res = PQexec(conn, str->data);
-	if (PQresultStatus(res) != PGRES_COMMAND_OK)
-		pg_log_error("could not drop subscription \"%s\" on database \"%s\": %s", dbinfo->subname, dbinfo->dbname, PQerrorMessage(conn));
+	if (!dry_run)
+	{
+		res = PQexec(conn, str->data);
+		if (PQresultStatus(res) != PGRES_COMMAND_OK)
+			pg_log_error("could not drop subscription \"%s\" on database \"%s\": %s", dbinfo->subname, dbinfo->dbname, PQerrorMessage(conn));
 
-	PQclear(res);
+		PQclear(res);
+	}
+
 	destroyPQExpBuffer(str);
 }
 
@@ -999,6 +1042,8 @@ drop_subscription(PGconn *conn, LogicalRepInfo *dbinfo)
  * replication slot. The goal is to set up the initial location for the logical
  * replication that is the exact LSN that the subscriber was promoted. Once the
  * subscription is enabled it will start streaming from that location onwards.
+ * In dry run mode, the subscription OID and LSN are set to invalid values for
+ * printing purposes.
  */
 static void
 set_replication_progress(PGconn *conn, LogicalRepInfo *dbinfo, const char *lsn)
@@ -1007,6 +1052,7 @@ set_replication_progress(PGconn *conn, LogicalRepInfo *dbinfo, const char *lsn)
 	PGresult   *res;
 	Oid			suboid;
 	char		originname[NAMEDATALEN];
+	char		lsnstr[17 + 1];		/* MAXPG_LSNLEN = 17 */
 
 	Assert(conn != NULL);
 
@@ -1023,7 +1069,7 @@ set_replication_progress(PGconn *conn, LogicalRepInfo *dbinfo, const char *lsn)
 		exit(1);
 	}
 
-	if (PQntuples(res) != 1)
+	if (PQntuples(res) != 1 && !dry_run)
 	{
 		pg_log_error("could not obtain subscription OID: got %d rows, expected %d rows",
 					 PQntuples(res), 1);
@@ -1032,36 +1078,49 @@ set_replication_progress(PGconn *conn, LogicalRepInfo *dbinfo, const char *lsn)
 		exit(1);
 	}
 
+	if (dry_run)
+	{
+		suboid = InvalidOid;
+		snprintf(lsnstr, sizeof(lsnstr), "%X/%X", LSN_FORMAT_ARGS((XLogRecPtr) InvalidXLogRecPtr));
+	}
+	else
+	{
+		suboid = strtoul(PQgetvalue(res, 0, 0), NULL, 10);
+		snprintf(lsnstr, sizeof(lsnstr), "%s", lsn);
+	}
 	/*
 	 * The origin name is defined as pg_%u. %u is the subscription OID. See
 	 * ApplyWorkerMain().
 	 */
-	suboid = strtoul(PQgetvalue(res, 0, 0), NULL, 10);
 	snprintf(originname, sizeof(originname), "pg_%u", suboid);
 
 	PQclear(res);
 
 	if (verbose)
 		pg_log_info("setting the replication progress (node name \"%s\" ; LSN %s) on database \"%s\"",
-					originname, lsn, dbinfo->dbname);
+					originname, lsnstr, dbinfo->dbname);
 
 	resetPQExpBuffer(str);
 	appendPQExpBuffer(str,
-					  "SELECT pg_catalog.pg_replication_origin_advance('%s', '%s')", originname, lsn);
+					  "SELECT pg_catalog.pg_replication_origin_advance('%s', '%s')", originname, lsnstr);
 
 	if (verbose)
 		pg_log_info("command is: %s", str->data);
 
-	res = PQexec(conn, str->data);
-	if (PQresultStatus(res) != PGRES_TUPLES_OK)
+	if (!dry_run)
 	{
-		pg_log_error("could not set replication progress for the subscription \"%s\": %s",
-					 dbinfo->subname, PQresultErrorMessage(res));
-		PQfinish(conn);
-		exit(1);
+		res = PQexec(conn, str->data);
+		if (PQresultStatus(res) != PGRES_TUPLES_OK)
+		{
+			pg_log_error("could not set replication progress for the subscription \"%s\": %s",
+						 dbinfo->subname, PQresultErrorMessage(res));
+			PQfinish(conn);
+			exit(1);
+		}
+
+		PQclear(res);
 	}
 
-	PQclear(res);
 	destroyPQExpBuffer(str);
 }
 
@@ -1088,16 +1147,20 @@ enable_subscription(PGconn *conn, LogicalRepInfo *dbinfo)
 	if (verbose)
 		pg_log_info("command is: %s", str->data);
 
-	res = PQexec(conn, str->data);
-	if (PQresultStatus(res) != PGRES_COMMAND_OK)
+	if (!dry_run)
 	{
-		pg_log_error("could not enable subscription \"%s\": %s", dbinfo->subname,
-					 PQerrorMessage(conn));
-		PQfinish(conn);
-		exit(1);
+		res = PQexec(conn, str->data);
+		if (PQresultStatus(res) != PGRES_COMMAND_OK)
+		{
+			pg_log_error("could not enable subscription \"%s\": %s", dbinfo->subname,
+						 PQerrorMessage(conn));
+			PQfinish(conn);
+			exit(1);
+		}
+
+		PQclear(res);
 	}
 
-	PQclear(res);
 	destroyPQExpBuffer(str);
 }
 
@@ -1112,6 +1175,7 @@ main(int argc, char **argv)
 		{"publisher-conninfo", required_argument, NULL, 'P'},
 		{"subscriber-conninfo", required_argument, NULL, 'S'},
 		{"database", required_argument, NULL, 'd'},
+		{"dry-run", no_argument, NULL, 'n'},
 		{"verbose", no_argument, NULL, 'v'},
 		{NULL, 0, NULL, 0}
 	};
@@ -1191,6 +1255,9 @@ main(int argc, char **argv)
 			case 'd':
 				simple_string_list_append(&database_names, optarg);
 				num_dbs++;
+				break;
+			case 'n':
+				dry_run = true;
 				break;
 			case 'v':
 				verbose++;
@@ -1364,14 +1431,25 @@ main(int argc, char **argv)
 	 * use a publisher connection for the follwing recovery functions. The
 	 * connection is only used to check the current server version (physical
 	 * replica, same server version). The subscriber is not running yet.
+	 * In dry run mode, the recovery parameters *won't* be written. An invalid
+	 * LSN is used for printing purposes.
 	 */
 	recoveryconfcontents = GenerateRecoveryConfig(conn, NULL);
-	appendPQExpBuffer(recoveryconfcontents, "recovery_target_lsn = '%s'\n",
-					  consistent_lsn);
 	appendPQExpBuffer(recoveryconfcontents, "recovery_target_inclusive = true\n");
 	appendPQExpBuffer(recoveryconfcontents, "recovery_target_action = promote\n");
 
-	WriteRecoveryConfig(conn, subscriber_dir, recoveryconfcontents);
+	if (dry_run)
+	{
+		appendPQExpBuffer(recoveryconfcontents, "# dry run mode");
+		appendPQExpBuffer(recoveryconfcontents, "recovery_target_lsn = '%X/%X'\n",
+						LSN_FORMAT_ARGS((XLogRecPtr) InvalidXLogRecPtr));
+	}
+	else
+	{
+		appendPQExpBuffer(recoveryconfcontents, "recovery_target_lsn = '%s'\n",
+					  consistent_lsn);
+		WriteRecoveryConfig(conn, subscriber_dir, recoveryconfcontents);
+	}
 	disconnect_database(conn);
 
 	if (verbose)
