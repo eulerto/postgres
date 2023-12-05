@@ -75,6 +75,23 @@ pg_recvlogical = executable('pg_recvlogical',
 )
 bin_targets += pg_recvlogical
 
+pg_subscriber_sources = files(
+  'pg_subscriber.c'
+)
+
+if host_system == 'windows'
+  pg_subscriber_sources += rc_bin_gen.process(win32ver_rc, extra_args: [
+	'--NAME', 'pg_subscriber',
+	'--FILEDESC', 'pg_subscriber - create a new logical replica from a standby server',])
+endif
+
+pg_subscriber = executable('pg_subscriber',
+  pg_subscriber_sources,
+  dependencies: [frontend_code, libpq],
+  kwargs: default_bin_args,
+)
+bin_targets += pg_subscriber
+
 tests += {
   'name': 'pg_basebackup',
   'sd': meson.current_source_dir(),
@@ -89,6 +106,8 @@ tests += {
       't/011_in_place_tablespace.pl',
       't/020_pg_receivewal.pl',
       't/030_pg_recvlogical.pl',
+      't/040_pg_subscriber.pl',
+      't/041_pg_subscriber_standby.pl',
     ],
   },
 }

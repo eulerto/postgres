@@ -26,7 +26,6 @@ SUBDIRS = \
 	pg_dump \
 	pg_resetwal \
 	pg_rewind \
-	pg_subscriber \
 	pg_test_fsync \
 	pg_test_timing \
 	pg_upgrade \
