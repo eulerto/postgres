@@ -53,7 +53,7 @@ static bool get_exec_path(const char *path);
 static bool check_data_directory(const char *datadir);
 static char *concat_conninfo_dbname(const char *conninfo, const char *dbname);
 static LogicalRepInfo *store_pub_sub_info(const char *pub_base_conninfo, const char *sub_base_conninfo);
-static PGconn *connect_database(const char *conninfo, bool secure_search_path);
+static PGconn *connect_database(const char *conninfo);
 static void disconnect_database(PGconn *conn);
 static uint64 get_sysid_from_conn(const char *conninfo);
 static uint64 get_control_from_datadir(const char *datadir);
@@ -123,7 +123,7 @@ cleanup_objects_atexit(void)
 	{
 		if (dbinfo[i].made_subscription)
 		{
-			conn = connect_database(dbinfo[i].subconninfo, true);
+			conn = connect_database(dbinfo[i].subconninfo);
 			if (conn != NULL)
 			{
 				drop_subscription(conn, &dbinfo[i]);
@@ -133,7 +133,7 @@ cleanup_objects_atexit(void)
 
 		if (dbinfo[i].made_publication || dbinfo[i].made_replslot)
 		{
-			conn = connect_database(dbinfo[i].pubconninfo, true);
+			conn = connect_database(dbinfo[i].pubconninfo);
 			if (conn != NULL)
 			{
 				if (dbinfo[i].made_publication)
@@ -147,7 +147,7 @@ cleanup_objects_atexit(void)
 
 	if (made_transient_replslot)
 	{
-		conn = connect_database(dbinfo[0].pubconninfo, true);
+		conn = connect_database(dbinfo[0].pubconninfo);
 		drop_replication_slot(conn, &dbinfo[0], temp_replslot);
 		disconnect_database(conn);
 	}
@@ -350,7 +350,6 @@ concat_conninfo_dbname(const char *conninfo, const char *dbname)
 
 	appendPQExpBufferStr(buf, conninfo);
 	appendPQExpBuffer(buf, " dbname=%s", dbname);
-	appendPQExpBufferStr(buf, " replication=database");
 
 	ret = pg_strdup(buf->data);
 	destroyPQExpBuffer(buf);
@@ -394,11 +393,16 @@ store_pub_sub_info(const char *pub_base_conninfo, const char *sub_base_conninfo)
 }
 
 static PGconn *
-connect_database(const char *conninfo, bool secure_search_path)
+connect_database(const char *conninfo)
 {
 	PGconn	   *conn;
+	PGresult   *res;
+	const char *rconninfo;
 
-	conn = PQconnectdb(conninfo);
+	/* logical replication mode */
+	rconninfo = psprintf("%s replication=database", conninfo);
+
+	conn = PQconnectdb(rconninfo);
 	if (PQstatus(conn) != CONNECTION_OK)
 	{
 		pg_log_error("connection to database failed: %s", PQerrorMessage(conn));
@@ -406,18 +410,13 @@ connect_database(const char *conninfo, bool secure_search_path)
 	}
 
 	/* secure search_path */
-	if (secure_search_path)
+	res = PQexec(conn, ALWAYS_SECURE_SEARCH_PATH_SQL);
+	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
-		PGresult   *res;
-
-		res = PQexec(conn, ALWAYS_SECURE_SEARCH_PATH_SQL);
-		if (PQresultStatus(res) != PGRES_TUPLES_OK)
-		{
-			pg_log_error("could not clear search_path: %s", PQresultErrorMessage(res));
-			return NULL;
-		}
-		PQclear(res);
+		pg_log_error("could not clear search_path: %s", PQresultErrorMessage(res));
+		return NULL;
 	}
+	PQclear(res);
 
 	return conn;
 }
@@ -439,14 +438,12 @@ get_sysid_from_conn(const char *conninfo)
 {
 	PGconn	   *conn;
 	PGresult   *res;
-	char	   *repconninfo;
 	uint64		sysid;
 
 	if (verbose)
 		pg_log_info("getting system identifier from publisher");
 
-	repconninfo = psprintf("%s replication=database", conninfo);
-	conn = connect_database(repconninfo, false);
+	conn = connect_database(conninfo);
 	if (conn == NULL)
 		exit(1);
 
@@ -470,6 +467,9 @@ get_sysid_from_conn(const char *conninfo)
 	}
 
 	sysid = strtou64(PQgetvalue(res, 0, 0), NULL, 10);
+
+	if (verbose)
+		pg_log_info("publisher: system identifier: %ld", sysid);
 
 	disconnect_database(conn);
 
@@ -499,6 +499,9 @@ get_control_from_datadir(const char *datadir)
 	}
 
 	sysid = cf->system_identifier;
+
+	if (verbose)
+		pg_log_info("subscriber: system identifier: %ld", sysid);
 
 	pfree(cf);
 
@@ -552,6 +555,9 @@ modify_sysid(const char *pg_resetwal_path, const char *datadir)
 	else
 		pg_log_error("subscriber failed to change system identifier: exit code: %d", rc);
 
+	if (verbose)
+		pg_log_info("subscriber: system identifier: %ld", cf->system_identifier);
+
 	pfree(cf);
 }
 
@@ -566,7 +572,7 @@ create_all_logical_replication_slots(LogicalRepInfo *dbinfo)
 		PGresult   *res;
 		char		replslotname[NAMEDATALEN];
 
-		conn = connect_database(dbinfo[i].pubconninfo, true);
+		conn = connect_database(dbinfo[i].pubconninfo);
 		if (conn == NULL)
 			exit(1);
 
@@ -750,7 +756,7 @@ wait_for_end_recovery(const char *conninfo)
 	if (verbose)
 		pg_log_info("waiting the postmaster to reach the consistent state");
 
-	conn = connect_database(conninfo, true);
+	conn = connect_database(conninfo);
 	if (conn == NULL)
 		exit(1);
 
@@ -1342,7 +1348,7 @@ main(int argc, char **argv)
 	 * replication connection open (depending when base backup was taken, the
 	 * connection should be open for a few hours).
 	 */
-	conn = connect_database(dbinfo[0].pubconninfo, false);
+	conn = connect_database(dbinfo[0].pubconninfo);
 	if (conn == NULL)
 		exit(1);
 	consistent_lsn = create_logical_replication_slot(conn, &dbinfo[0],
@@ -1364,6 +1370,9 @@ main(int argc, char **argv)
 
 	WriteRecoveryConfig(conn, subscriber_dir, recoveryconfcontents);
 	disconnect_database(conn);
+
+	if (verbose)
+		pg_log_info("recovery parameters:\n%s", recoveryconfcontents->data);
 
 	/*
 	 * Start subscriber and wait until accepting connections.
@@ -1390,7 +1399,7 @@ main(int argc, char **argv)
 		char		pubname[NAMEDATALEN];
 
 		/* Connect to publisher. */
-		conn = connect_database(dbinfo[i].pubconninfo, true);
+		conn = connect_database(dbinfo[i].pubconninfo);
 		if (conn == NULL)
 			exit(1);
 
@@ -1413,7 +1422,7 @@ main(int argc, char **argv)
 	for (i = 0; i < num_dbs; i++)
 	{
 		/* Connect to subscriber. */
-		conn = connect_database(dbinfo[i].subconninfo, true);
+		conn = connect_database(dbinfo[i].subconninfo);
 		if (conn == NULL)
 			exit(1);
 
@@ -1434,7 +1443,7 @@ main(int argc, char **argv)
 	 * XXX we might not fail here. Instead, we provide a warning so the user
 	 * eventually drops the replication slot later.
 	 */
-	conn = connect_database(dbinfo[0].pubconninfo, true);
+	conn = connect_database(dbinfo[0].pubconninfo);
 	if (conn == NULL)
 	{
 		pg_log_warning("could not drop transient replication slot \"%s\" on publisher", temp_replslot);
