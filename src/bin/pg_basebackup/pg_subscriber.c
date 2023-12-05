@@ -656,7 +656,7 @@ create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
 	 */
 	if (slot_name[0] == '\0')
 	{
-		snprintf(slot_name, sizeof(slot_name), "pg_subscriber_%d_startpoint",
+		snprintf(slot_name, NAMEDATALEN, "pg_subscriber_%d_startpoint",
 			 (int) getpid());
 		transient_replslot = true;
 	}
@@ -1423,6 +1423,9 @@ main(int argc, char **argv)
 		exit(1);
 	consistent_lsn = create_logical_replication_slot(conn, &dbinfo[0],
 													 temp_replslot);
+
+	if (verbose)
+		pg_log_info("temporary replication slot: %s", temp_replslot);
 
 	/*
 	 * Write recovery parameters.
