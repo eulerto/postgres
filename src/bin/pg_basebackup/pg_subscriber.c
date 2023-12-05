@@ -270,7 +270,7 @@ get_exec_path(const char *path)
 	}
 
 	if (verbose)
-		pg_log_info("pg_ctl path is: %s", pg_ctl_path);
+		pg_log_debug("pg_ctl path is: %s", pg_ctl_path);
 
 	pg_resetwal_path = pg_malloc(MAXPGPATH);
 	rc = find_other_exec(path, "pg_resetwal",
@@ -296,7 +296,7 @@ get_exec_path(const char *path)
 	}
 
 	if (verbose)
-		pg_log_info("pg_resetwal path is: %s", pg_resetwal_path);
+		pg_log_debug("pg_resetwal path is: %s", pg_resetwal_path);
 
 	return true;
 }
@@ -550,12 +550,15 @@ modify_sysid(const char *pg_resetwal_path, const char *datadir)
 		update_controlfile(datadir, cf, true);
 
 	if (verbose)
-		pg_log_info("running pg_resetwal in the subscriber");
+		pg_log_info("system identifier is %ld on subscriber", cf->system_identifier);
+
+	if (verbose)
+		pg_log_info("running pg_resetwal on the subscriber");
 
 	cmd_str = psprintf("\"%s\" -D \"%s\"", pg_resetwal_path, datadir);
 
 	if (verbose)
-		pg_log_info("command is: %s", cmd_str);
+		pg_log_debug("command is: %s", cmd_str);
 
 	if (!dry_run)
 	{
@@ -565,9 +568,6 @@ modify_sysid(const char *pg_resetwal_path, const char *datadir)
 		else
 			pg_log_error("subscriber failed to change system identifier: exit code: %d", rc);
 	}
-
-	if (verbose)
-		pg_log_info("system identifier is %ld on subscriber", cf->system_identifier);
 
 	pfree(cf);
 }
@@ -668,7 +668,7 @@ create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
 	appendPQExpBufferStr(str, " LOGICAL \"pgoutput\" NOEXPORT_SNAPSHOT");
 
 	if (verbose)
-		pg_log_info("command is: %s", str->data);
+		pg_log_debug("command is: %s", str->data);
 
 	if (!dry_run)
 	{
@@ -712,7 +712,7 @@ drop_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo, const char *slot_nam
 	appendPQExpBuffer(str, "DROP_REPLICATION_SLOT \"%s\"", slot_name);
 
 	if (verbose)
-		pg_log_info("command is: %s", str->data);
+		pg_log_debug("command is: %s", str->data);
 
 	if (!dry_run)
 	{
@@ -898,7 +898,7 @@ create_publication(PGconn *conn, LogicalRepInfo *dbinfo)
 	appendPQExpBuffer(str, "CREATE PUBLICATION %s FOR ALL TABLES", dbinfo->pubname);
 
 	if (verbose)
-		pg_log_info("command is: %s", str->data);
+		pg_log_debug("command is: %s", str->data);
 
 	if (!dry_run)
 	{
@@ -938,7 +938,7 @@ drop_publication(PGconn *conn, LogicalRepInfo *dbinfo)
 	appendPQExpBuffer(str, "DROP PUBLICATION %s", dbinfo->pubname);
 
 	if (verbose)
-		pg_log_info("command is: %s", str->data);
+		pg_log_debug("command is: %s", str->data);
 
 	if (!dry_run)
 	{
@@ -981,7 +981,7 @@ create_subscription(PGconn *conn, LogicalRepInfo *dbinfo)
 					  dbinfo->subname, dbinfo->pubconninfo, dbinfo->pubname);
 
 	if (verbose)
-		pg_log_info("command is: %s", str->data);
+		pg_log_debug("command is: %s", str->data);
 
 	if (!dry_run)
 	{
@@ -1021,7 +1021,7 @@ drop_subscription(PGconn *conn, LogicalRepInfo *dbinfo)
 	appendPQExpBuffer(str, "DROP SUBSCRIPTION %s", dbinfo->subname);
 
 	if (verbose)
-		pg_log_info("command is: %s", str->data);
+		pg_log_debug("command is: %s", str->data);
 
 	if (!dry_run)
 	{
@@ -1105,7 +1105,7 @@ set_replication_progress(PGconn *conn, LogicalRepInfo *dbinfo, const char *lsn)
 					  "SELECT pg_catalog.pg_replication_origin_advance('%s', '%s')", originname, lsnstr);
 
 	if (verbose)
-		pg_log_info("command is: %s", str->data);
+		pg_log_debug("command is: %s", str->data);
 
 	if (!dry_run)
 	{
@@ -1145,7 +1145,7 @@ enable_subscription(PGconn *conn, LogicalRepInfo *dbinfo)
 	appendPQExpBuffer(str, "ALTER SUBSCRIPTION %s ENABLE", dbinfo->subname);
 
 	if (verbose)
-		pg_log_info("command is: %s", str->data);
+		pg_log_debug("command is: %s", str->data);
 
 	if (!dry_run)
 	{
@@ -1424,9 +1424,6 @@ main(int argc, char **argv)
 	consistent_lsn = create_logical_replication_slot(conn, &dbinfo[0],
 													 temp_replslot);
 
-	if (verbose)
-		pg_log_info("temporary replication slot: %s", temp_replslot);
-
 	/*
 	 * Write recovery parameters.
 	 *
@@ -1456,7 +1453,7 @@ main(int argc, char **argv)
 	disconnect_database(conn);
 
 	if (verbose)
-		pg_log_info("recovery parameters:\n%s", recoveryconfcontents->data);
+		pg_log_debug("recovery parameters:\n%s", recoveryconfcontents->data);
 
 	/*
 	 * Start subscriber and wait until accepting connections.
