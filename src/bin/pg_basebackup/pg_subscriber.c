@@ -309,7 +309,7 @@ check_data_directory(const char *datadir)
 	char		versionfile[MAXPGPATH];
 
 	pg_log_info("checking if directory \"%s\" is a cluster data directory",
-					datadir);
+				datadir);
 
 	if (stat(datadir, &statbuf) != 0)
 	{
@@ -644,7 +644,7 @@ create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
 	if (slot_name[0] == '\0')
 	{
 		snprintf(slot_name, NAMEDATALEN, "pg_subscriber_%d_startpoint",
-			 (int) getpid());
+				 (int) getpid());
 		transient_replslot = true;
 	}
 
@@ -786,9 +786,8 @@ wait_for_end_recovery(const char *conninfo)
 		PQclear(res);
 
 		/*
-		 * Does the recovery process finish?
-		 * In dry run mode, there is no recovery mode. Bail out as the recovery
-		 * process has ended.
+		 * Does the recovery process finish? In dry run mode, there is no
+		 * recovery mode. Bail out as the recovery process has ended.
 		 */
 		if (!in_recovery || dry_run)
 		{
@@ -851,11 +850,11 @@ create_publication(PGconn *conn, LogicalRepInfo *dbinfo)
 		else
 		{
 			/*
-			 * Unfortunately, if it reaches this code path, it will always fail
-			 * (unless you decide to change the existing publication name).
-			 * That's bad but it is very unlikely that the user will choose a
-			 * name with pg_subscriber_ prefix followed by the exact database
-			 * oid in which puballtables is false.
+			 * Unfortunately, if it reaches this code path, it will always
+			 * fail (unless you decide to change the existing publication
+			 * name). That's bad but it is very unlikely that the user will
+			 * choose a name with pg_subscriber_ prefix followed by the exact
+			 * database oid in which puballtables is false.
 			 */
 			pg_log_error("publication \"%s\" does not replicate changes for all tables",
 						 dbinfo->pubname);
@@ -1021,7 +1020,7 @@ set_replication_progress(PGconn *conn, LogicalRepInfo *dbinfo, const char *lsn)
 	PGresult   *res;
 	Oid			suboid;
 	char		originname[NAMEDATALEN];
-	char		lsnstr[17 + 1];		/* MAXPG_LSNLEN = 17 */
+	char		lsnstr[17 + 1]; /* MAXPG_LSNLEN = 17 */
 
 	Assert(conn != NULL);
 
@@ -1057,6 +1056,7 @@ set_replication_progress(PGconn *conn, LogicalRepInfo *dbinfo, const char *lsn)
 		suboid = strtoul(PQgetvalue(res, 0, 0), NULL, 10);
 		snprintf(lsnstr, sizeof(lsnstr), "%s", lsn);
 	}
+
 	/*
 	 * The origin name is defined as pg_%u. %u is the subscription OID. See
 	 * ApplyWorkerMain().
@@ -1066,7 +1066,7 @@ set_replication_progress(PGconn *conn, LogicalRepInfo *dbinfo, const char *lsn)
 	PQclear(res);
 
 	pg_log_info("setting the replication progress (node name \"%s\" ; LSN %s) on database \"%s\"",
-					originname, lsnstr, dbinfo->dbname);
+				originname, lsnstr, dbinfo->dbname);
 
 	resetPQExpBuffer(str);
 	appendPQExpBuffer(str,
@@ -1302,7 +1302,7 @@ main(int argc, char **argv)
 			num_dbs++;
 
 			pg_log_info("database \"%s\" was extracted from the publisher connection string",
-							dbname_conninfo);
+						dbname_conninfo);
 		}
 		else
 		{
@@ -1391,8 +1391,8 @@ main(int argc, char **argv)
 	 * Despite of the recovery parameters will be written to the subscriber,
 	 * use a publisher connection for the follwing recovery functions. The
 	 * connection is only used to check the current server version (physical
-	 * replica, same server version). The subscriber is not running yet.
-	 * In dry run mode, the recovery parameters *won't* be written. An invalid
+	 * replica, same server version). The subscriber is not running yet. In
+	 * dry run mode, the recovery parameters *won't* be written. An invalid
 	 * LSN is used for printing purposes.
 	 */
 	recoveryconfcontents = GenerateRecoveryConfig(conn, NULL);
@@ -1403,12 +1403,12 @@ main(int argc, char **argv)
 	{
 		appendPQExpBuffer(recoveryconfcontents, "# dry run mode");
 		appendPQExpBuffer(recoveryconfcontents, "recovery_target_lsn = '%X/%X'\n",
-						LSN_FORMAT_ARGS((XLogRecPtr) InvalidXLogRecPtr));
+						  LSN_FORMAT_ARGS((XLogRecPtr) InvalidXLogRecPtr));
 	}
 	else
 	{
 		appendPQExpBuffer(recoveryconfcontents, "recovery_target_lsn = '%s'\n",
-					  consistent_lsn);
+						  consistent_lsn);
 		WriteRecoveryConfig(conn, subscriber_dir, recoveryconfcontents);
 	}
 	disconnect_database(conn);
