@@ -35,11 +35,42 @@
 #include "utils/builtins.h"
 #include "utils/datetime.h"
 #include "utils/guc_hooks.h"
+#include "utils/guc_tables.h"
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 #include "utils/timestamp.h"
 #include "utils/tzparser.h"
 #include "utils/varlena.h"
+
+struct log_min_messages_entry
+{
+	const char *name;
+	int			val;
+};
+
+/*
+ * element index is the BackendType
+ */
+static struct log_min_messages_entry log_min_messages_options[] = {
+	{"INVALID", WARNING},				/* FIXME */
+	{"ARCHIVER", WARNING},
+	{"AUTOVAC_LAUNCHER", WARNING},
+	{"AUTOVAC_WORKER", WARNING},
+	{"BACKEND", WARNING},
+	{"BG_WORKER", WARNING},				/* FIXME dynamic assignment? */
+	{"BG_WRITER", WARNING},
+	{"CHECKPOINTER", WARNING},
+	{"LOGGER", WARNING},
+	{"BACKEND", WARNING},				/* STANDALONE_BACKEND */
+	{"BACKEND", WARNING},				/* STARTUP */
+	{"WAL_RECEIVER", WARNING},
+	{"WAL_SENDER", WARNING},
+	{"WAL_WRITER", WARNING},
+	{NULL, 0},
+};
+
+StaticAssertDecl(lengthof(log_min_messages_options) == BACKEND_NUM_TYPES + 1,
+		"array length mismatch");
 
 /*
  * DATESTYLE
@@ -1233,4 +1264,174 @@ check_ssl(bool *newval, void **extra, GucSource source)
 	}
 #endif
 	return true;
+}
+
+/*
+ * GUC check_hook for log_min_messages
+ *
+ * The parsing consists of a comma-separated list of LEVEL:BACKENDTYPENAME
+ * elements. LEVEL is server_message_level_options. BACKENDTYPENAME is the
+ * first member of log_min_messages_options. A single LEVEL element is accepted
+ * for backward-compatibility.
+ */
+bool
+check_log_min_messages(char **newval, void **extra, GucSource source)
+{
+	char	*rawstring;
+	List	*elemlist;
+	ListCell	*l;
+	int			newlogminmsgs[BACKEND_NUM_TYPES];
+
+	/* Initialize the array. */
+	memset(newlogminmsgs, WARNING, BACKEND_NUM_TYPES * sizeof(int));
+
+	for (int i = 0; i < BACKEND_NUM_TYPES; i++)
+		fprintf(stderr, "newlogminmsgs[%d]: %d\n", i, newlogminmsgs[i]);
+
+	/* Need a modifiable copy of string. */
+	rawstring = pstrdup(*newval);
+
+	/* Parse string into list of identifiers. */
+	if (!SplitIdentifierString(rawstring, ',', &elemlist))
+	{
+		/* syntax error in list */
+		GUC_check_errdetail("List syntax is invalid.");
+		pfree(rawstring);
+		list_free(elemlist);
+		return false;
+	}
+
+	/* Validate and assign log level and backend type. */
+	foreach(l, elemlist)
+	{
+		char	   *tok = (char *) lfirst(l);
+		int			btid;
+		char	   *sep;
+		const struct config_enum_entry	*entry;
+
+		/*
+		 * Check whether there is a backend type following the log level. If
+		 * there is no separator, it means this log level should be applied for
+		 * all backend types. It is also for backward-compatibility.
+		 */
+		sep = strchr(tok, ':');
+		if (sep == NULL)
+		{
+			bool found = false;
+
+			/*
+			 * It only accepts value without backend type if the list has only
+			 * one element. That's for backward-compatibility.
+			 */
+			if (list_length(elemlist) > 1)
+			{
+				GUC_check_errdetail("Log level must provide a backend type.");
+				pfree(rawstring);
+				list_free(elemlist);
+				return false;
+			}
+
+			/* Is the log level valid? */
+			for (entry = server_message_level_options; entry && entry->name; entry++)
+			{
+				if (pg_strcasecmp(entry->name, tok) == 0)
+				{
+					for (btid = 0; btid < BACKEND_NUM_TYPES; btid++)
+						newlogminmsgs[btid] = entry->val;
+					found = true;
+					break;
+				}
+			}
+
+			if (!found)
+			{
+				GUC_check_errdetail("Unrecognized log level: \"%s\".", tok);
+				pfree(rawstring);
+				list_free(elemlist);
+				return false;
+			}
+		}
+		else
+		{
+			char	   *loglevel;
+			char	   *btype;
+			bool		found = false;
+			const struct log_min_messages_entry	*bentry;
+
+			loglevel = palloc((sep - tok) + 1);
+			memcpy(loglevel, tok, sep - tok);
+			loglevel[sep - tok] = '\0';
+			btype = pstrdup(sep + 1);
+
+			/* Is the backend type name valid? */
+			btid = 0;
+			for (bentry = log_min_messages_options; bentry && bentry->name; bentry++)
+			{
+				if (pg_strcasecmp(bentry->name, btype) == 0)
+				{
+					found = true;
+					break;
+				}
+				btid++;
+			}
+
+			/* FIXME provide a list of backend types in the errdetail. */
+			if (!found)
+			{
+				GUC_check_errdetail("Unrecognized backend type: \"%s\".", btype);
+				pfree(rawstring);
+				list_free(elemlist);
+				return false;
+			}
+
+			/* Is the log level valid? */
+			found = false;
+			for (entry = server_message_level_options; entry && entry->name; entry++)
+			{
+				if (pg_strcasecmp(entry->name, loglevel) == 0)
+				{
+					newlogminmsgs[btid] = entry->val;
+					found = true;
+					break;
+				}
+			}
+
+			/* FIXME provide a list of log levels in the errdetail. */
+			if (!found)
+			{
+				GUC_check_errdetail("Unrecognized log level: \"%s\".", loglevel);
+				pfree(rawstring);
+				list_free(elemlist);
+				return false;
+			}
+		}
+	}
+
+	pfree(rawstring);
+	list_free(elemlist);
+
+	/*
+	 * Pass back data for assign_log_min_messages to use.
+	 */
+	*extra = guc_malloc(LOG, BACKEND_NUM_TYPES * sizeof(int));
+	if (!*extra)
+		return false;
+	memcpy(*extra, newlogminmsgs, BACKEND_NUM_TYPES * sizeof(int));
+
+//	for (int i = 0; i < BACKEND_NUM_TYPES; i++)
+//		fprintf(stderr, "extra[%d]: %d\n", i, *((int *) extra[i]));
+
+	return true;
+}
+
+/*
+ * GUC assign_hook for log_min_messages
+ */
+void
+assign_log_min_messages(const char *newval, void *extra)
+{
+	log_min_messages = (int *) extra;
+
+	for (int i = 0; i < BACKEND_NUM_TYPES; i++)
+		fprintf(stderr, "log_min_messages[%d]: %d\n", i, log_min_messages[i]);
 }

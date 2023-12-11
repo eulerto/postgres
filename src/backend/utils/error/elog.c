@@ -205,6 +205,7 @@ static void append_with_tabs(StringInfo buf, const char *str);
 static inline bool
 is_log_level_output(int elevel, int log_min_level)
 {
+	fprintf(stderr, "is_log_level_output: MyBackendType: %d ; log_min_messages: %d\n", MyBackendType, log_min_level);
 	if (elevel == LOG || elevel == LOG_SERVER_ONLY)
 	{
 		if (log_min_level == LOG || log_min_level <= ERROR)
@@ -239,7 +240,7 @@ is_log_level_output(int elevel, int log_min_level)
 static inline bool
 should_output_to_server(int elevel)
 {
-	return is_log_level_output(elevel, log_min_messages);
+	return is_log_level_output(elevel, log_min_messages[MyBackendType]);
 }
 
 /*

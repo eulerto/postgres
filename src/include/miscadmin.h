@@ -321,6 +321,10 @@ extern void InitProcessLocalLatch(void);
 extern void SwitchToSharedLatch(void);
 extern void SwitchBackToLocalLatch(void);
 
+/*
+ * XXX If you add a new backend type or change the order, update
+ * log_min_messages_options because it relies on this order to work correctly.
+ */
 typedef enum BackendType
 {
 	B_INVALID = 0,

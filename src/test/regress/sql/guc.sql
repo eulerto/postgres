@@ -353,3 +353,11 @@ SELECT name FROM tab_settings_flags
   WHERE no_reset AND NOT no_reset_all
   ORDER BY 1;
 DROP TABLE tab_settings_flags;
+
+-- Test log_min_messages
+SET log_min_messages TO fatal;
+SHOW log_min_messages;
+SET log_min_messages TO "warning, debug1:archiver";	-- fail
+SET log_min_messages TO "error:backend, fatal, debug1:archiver";	-- fail
+SET log_min_messages TO "error:backend, debug3:checkpointer, debug2:archiver, debug1:autovac_worker, debug3:wal_sender";
+SHOW log_min_messages;
