@@ -332,6 +332,8 @@ extern void SwitchBackToLocalLatch(void);
  *
  * If you add entries, please also update the child_process_kinds array in
  * launch_backend.c.
+ * XXX If you add a new backend type or change the order, update
+ * log_min_messages because it relies on this order to work correctly.
  */
 typedef enum BackendType
 {
