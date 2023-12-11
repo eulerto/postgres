@@ -139,7 +139,7 @@ static const struct config_enum_entry client_message_level_options[] = {
 	{NULL, 0, false}
 };
 
-static const struct config_enum_entry server_message_level_options[] = {
+const struct config_enum_entry server_message_level_options[] = {
 	{"debug5", DEBUG5, false},
 	{"debug4", DEBUG4, false},
 	{"debug3", DEBUG3, false},
@@ -521,7 +521,8 @@ static bool default_with_oids = false;
 bool		current_role_is_superuser;
 
 int			log_min_error_statement = ERROR;
-int			log_min_messages = WARNING;
+char	   *log_min_messages_string = NULL;
+int		   *log_min_messages = NULL;
 int			client_min_messages = NOTICE;
 int			log_min_duration_sample = -1;
 int			log_min_duration_statement = -1;
@@ -4215,6 +4216,18 @@ struct config_string ConfigureNamesString[] =
 	},
 
 	{
+		{"log_min_messages", PGC_SUSET, LOGGING_WHEN,
+			gettext_noop("Sets the message levels that are logged."),
+			gettext_noop("Each level includes all the levels that follow it. The later"
+						 " the level, the fewer messages are sent."),
+			GUC_LIST_INPUT
+		},
+		&log_min_messages_string,
+		"WARNING",
+		check_log_min_messages, assign_log_min_messages, NULL
+	},
+
+	{
 		{"log_line_prefix", PGC_SIGHUP, LOGGING_WHAT,
 			gettext_noop("Controls information prefixed to each log line."),
 			gettext_noop("An empty string means no prefix.")
@@ -4999,17 +5012,6 @@ struct config_enum ConfigureNamesEnum[] =
 		},
 		&Log_error_verbosity,
 		PGERROR_DEFAULT, log_error_verbosity_options,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"log_min_messages", PGC_SUSET, LOGGING_WHEN,
-			gettext_noop("Sets the message levels that are logged."),
-			gettext_noop("Each level includes all the levels that follow it. The later"
-						 " the level, the fewer messages are sent.")
-		},
-		&log_min_messages,
-		WARNING, server_message_level_options,
 		NULL, NULL, NULL
 	},
 

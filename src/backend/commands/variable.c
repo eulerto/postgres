@@ -35,11 +35,45 @@
 #include "utils/datetime.h"
 #include "utils/fmgrprotos.h"
 #include "utils/guc_hooks.h"
+#include "utils/guc_tables.h"
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 #include "utils/timestamp.h"
 #include "utils/tzparser.h"
 #include "utils/varlena.h"
+
+struct log_min_messages_entry
+{
+	const char *name;
+	int			val;
+};
+
+/*
+ * The element index is the BackendType.
+ */
+static struct log_min_messages_entry log_min_messages_options[] = {
+	{"BACKEND", WARNING},		/* B_INVALID. XXX same as BACKEND? */
+	{"BACKEND", WARNING},		/* B_BACKEND */
+	{"BACKEND", WARNING},		/* B_DEAD_END_BACKEND. XXX same as BACKEND? */
+	{"AUTOVACUUM", WARNING},	/* B_AUTOVAC_LAUNCHER */
+	{"AUTOVACUUM", WARNING},	/* B_AUTOVAC_WORKER */
+	{"BGWORKER", WARNING},		/* B_BG_WORKER */
+	{"WALSENDER", WARNING},		/* B_WAL_SENDER */
+	{"SLOTSYNCWORKER", WARNING},	/* B_SLOTSYNC_WORKER */
+	{"BACKEND", WARNING},		/* B_STANDALONE_BACKEND. XXX same as BACKEND? */
+	{"ARCHIVER", WARNING},		/* B_ARCHIVER */
+	{"BGWRITER", WARNING},		/* B_BG_WRITER */
+	{"CHECKPOINTER", WARNING},	/* B_CHECKPOINTER */
+	{"BACKEND", WARNING},		/* B_STARTUP. XXX same as BACKEND? */
+	{"WALRECEIVER", WARNING},	/* B_WAL_RECEIVER */
+	{"WALSUMMARIZER", WARNING}, /* B_WAL_SUMMARIZER */
+	{"WALWRITER", WARNING},		/* B_WAL_WRITER */
+	{"LOGGER", WARNING},		/* B_LOGGER */
+	{NULL, 0},
+};
+
+StaticAssertDecl(lengthof(log_min_messages_options) == BACKEND_NUM_TYPES + 1,
+				 "array length mismatch");
 
 /*
  * DATESTYLE
@@ -1270,4 +1304,186 @@ check_ssl(bool *newval, void **extra, GucSource source)
 	}
 #endif
 	return true;
+}
+
+/*
+ * GUC check_hook for log_min_messages
+ *
+ * The parsing consists of a comma-separated list of BACKENDTYPENAME:LEVEL
+ * elements. BACKENDTYPENAME is the first member of log_min_messages_options.
+ * LEVEL is server_message_level_options. A single LEVEL element is accepted
+ * for backward compatibility and means to apply this level for the backend
+ * types that are not specified.
+ */
+bool
+check_log_min_messages(char **newval, void **extra, GucSource source)
+{
+	char	   *rawstring;
+	List	   *elemlist;
+	ListCell   *l;
+	int			newlogminmsgs[BACKEND_NUM_TYPES];
+	bool		assigned[BACKEND_NUM_TYPES];
+	int			alllogminmsgs = -1;
+
+	/* Initialize the array. */
+	memset(newlogminmsgs, WARNING, BACKEND_NUM_TYPES * sizeof(int));
+	memset(assigned, false, BACKEND_NUM_TYPES * sizeof(bool));
+
+	/* Need a modifiable copy of string. */
+	rawstring = pstrdup(*newval);
+
+	/* Parse string into list of identifiers. */
+	if (!SplitGUCList(rawstring, ',', &elemlist))
+	{
+		/* syntax error in list */
+		GUC_check_errdetail("List syntax is invalid.");
+		pfree(rawstring);
+		list_free(elemlist);
+		return false;
+	}
+
+	/* Validate and assign log level and backend type. */
+	foreach(l, elemlist)
+	{
+		char	   *tok = (char *) lfirst(l);
+		int			btid;
+		char	   *sep;
+		const struct config_enum_entry *entry;
+
+		/*
+		 * Check whether there is a backend type following the log level. If
+		 * there is no separator, it means this log level should be applied
+		 * for all backend types (backward compatibility).
+		 */
+		sep = strchr(tok, ':');
+		if (sep == NULL)
+		{
+			bool		found = false;
+
+			/* Reject duplicates for all backend types. */
+			if (alllogminmsgs != -1)
+			{
+				GUC_check_errdetail("Generic log level was already assigned.");
+				pfree(rawstring);
+				list_free(elemlist);
+				return false;
+			}
+
+			/* Is the log level valid? */
+			for (entry = server_message_level_options; entry && entry->name; entry++)
+			{
+				if (pg_strcasecmp(entry->name, tok) == 0)
+				{
+					alllogminmsgs = entry->val;
+					found = true;
+					break;
+				}
+			}
+
+			if (!found)
+			{
+				GUC_check_errdetail("Unrecognized log level: \"%s\".", tok);
+				pfree(rawstring);
+				list_free(elemlist);
+				return false;
+			}
+		}
+		else
+		{
+			char	   *loglevel;
+			char	   *btype;
+			bool		found = false;
+			const struct log_min_messages_entry *bentry;
+
+			btype = palloc((sep - tok) + 1);
+			memcpy(btype, tok, sep - tok);
+			btype[sep - tok] = '\0';
+			loglevel = pstrdup(sep + 1);
+
+			/* Is the log level valid? */
+			for (entry = server_message_level_options; entry && entry->name; entry++)
+			{
+				if (pg_strcasecmp(entry->name, loglevel) == 0)
+				{
+					found = true;
+					break;
+				}
+			}
+
+			/* FIXME provide a list of log levels in the errdetail. */
+			if (!found)
+			{
+				GUC_check_errdetail("Unrecognized log level: \"%s\".", loglevel);
+				pfree(rawstring);
+				list_free(elemlist);
+				return false;
+			}
+
+			/* Is the backend type name valid? */
+			found = false;
+			btid = 0;
+			for (bentry = log_min_messages_options; bentry && bentry->name; bentry++)
+			{
+				if (pg_strcasecmp(bentry->name, btype) == 0)
+				{
+					newlogminmsgs[btid] = entry->val;
+					assigned[btid] = true;
+					found = true;
+				}
+				btid++;
+			}
+
+			/* FIXME provide a list of backend types in the errdetail. */
+			if (!found)
+			{
+				GUC_check_errdetail("Unrecognized backend type: \"%s\".", btype);
+				pfree(rawstring);
+				list_free(elemlist);
+				return false;
+			}
+		}
+	}
+
+	/*
+	 * If you informed a generic log level (the one without a backend type),
+	 * apply it after all of the specific backend have been assigned. Hence,
+	 * it doesn't matter the order you specify the generic log level, the
+	 * final result will be the same. Even if you don't specify a generic log
+	 * level, apply the default that is WARNING.
+	 */
+	if (alllogminmsgs != -1)
+	{
+		for (int i = 0; i < BACKEND_NUM_TYPES; i++)
+		{
+			if (!assigned[i])
+			{
+				if (alllogminmsgs != -1)
+					newlogminmsgs[i] = alllogminmsgs;
+				else
+					newlogminmsgs[i] = WARNING;
+			}
+		}
+	}
+
+	pfree(rawstring);
+	list_free(elemlist);
+
+	/*
+	 * Pass back data for assign_log_min_messages to use.
+	 */
+	*extra = guc_malloc(LOG, BACKEND_NUM_TYPES * sizeof(int));
+	if (!*extra)
+		return false;
+	memcpy(*extra, newlogminmsgs, BACKEND_NUM_TYPES * sizeof(int));
+
+	return true;
+}
+
+/*
+ * GUC assign_hook for log_min_messages
+ */
+void
+assign_log_min_messages(const char *newval, void *extra)
+{
+	log_min_messages = (int *) extra;
 }
