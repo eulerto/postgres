@@ -526,6 +526,7 @@
 					#   log
 					#   fatal
 					#   panic
+					#   or a comma-separated list of backend_type:level
 
 #log_min_error_statement = error	# values in order of decreasing detail:
 					#   debug5

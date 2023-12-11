@@ -297,6 +297,10 @@ struct config_enum
 	void	   *reset_extra;
 };
 
+/* log_min_messages */
+extern PGDLLIMPORT const char *const log_min_messages_backend_types[];
+extern PGDLLIMPORT const struct config_enum_entry server_message_level_options[];
+
 /* constant tables corresponding to enums above and in guc.h */
 extern PGDLLIMPORT const char *const config_group_names[];
 extern PGDLLIMPORT const char *const config_type_names[];

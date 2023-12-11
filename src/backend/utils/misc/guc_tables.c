@@ -139,7 +139,7 @@ static const struct config_enum_entry client_message_level_options[] = {
 	{NULL, 0, false}
 };
 
-static const struct config_enum_entry server_message_level_options[] = {
+const struct config_enum_entry server_message_level_options[] = {
 	{"debug5", DEBUG5, false},
 	{"debug4", DEBUG4, false},
 	{"debug3", DEBUG3, false},
@@ -521,7 +521,6 @@ static bool default_with_oids = false;
 bool		current_role_is_superuser;
 
 int			log_min_error_statement = ERROR;
-int			log_min_messages = WARNING;
 int			client_min_messages = NOTICE;
 int			log_min_duration_sample = -1;
 int			log_min_duration_statement = -1;
@@ -579,6 +578,7 @@ static char *server_version_string;
 static int	server_version_num;
 static char *debug_io_direct_string;
 static char *restrict_nonsystem_relation_kind_string;
+static char *log_min_messages_string;
 
 #ifdef HAVE_SYSLOG
 #define	DEFAULT_SYSLOG_FACILITY LOG_LOCAL0
@@ -622,6 +622,60 @@ char	   *role_string;
 
 /* should be static, but guc.c needs to get at this */
 bool		in_hot_standby_guc;
+
+/*
+ * This must match enum BackendType! It should be static, but
+ * commands/variable.c needs to get at this.
+ */
+int			log_min_messages[] = {
+	[B_INVALID] = WARNING,
+	[B_BACKEND] = WARNING,
+	[B_DEAD_END_BACKEND] = WARNING,
+	[B_AUTOVAC_LAUNCHER] = WARNING,
+	[B_AUTOVAC_WORKER] = WARNING,
+	[B_BG_WORKER] = WARNING,
+	[B_WAL_SENDER] = WARNING,
+	[B_SLOTSYNC_WORKER] = WARNING,
+	[B_STANDALONE_BACKEND] = WARNING,
+	[B_ARCHIVER] = WARNING,
+	[B_BG_WRITER] = WARNING,
+	[B_CHECKPOINTER] = WARNING,
+	[B_STARTUP] = WARNING,
+	[B_WAL_RECEIVER] = WARNING,
+	[B_WAL_SUMMARIZER] = WARNING,
+	[B_WAL_WRITER] = WARNING,
+	[B_LOGGER] = WARNING,
+};
+
+StaticAssertDecl(lengthof(log_min_messages) == BACKEND_NUM_TYPES,
+				 "array length mismatch");
+
+/*
+ * This must match enum BackendType! It might be in commands/variable.c but for
+ * convenience it is near log_min_messages.
+ */
+const char *const log_min_messages_backend_types[] = {
+	[B_INVALID] = "backend",	/* XXX same as backend? */
+	[B_BACKEND] = "backend",
+	[B_DEAD_END_BACKEND] = "backend",	/* XXX same as backend? */
+	[B_AUTOVAC_LAUNCHER] = "autovacuum",
+	[B_AUTOVAC_WORKER] = "autovacuum",
+	[B_BG_WORKER] = "bgworker",
+	[B_WAL_SENDER] = "walsender",
+	[B_SLOTSYNC_WORKER] = "slotsyncworker",
+	[B_STANDALONE_BACKEND] = "backend", /* XXX same as backend? */
+	[B_ARCHIVER] = "archiver",
+	[B_BG_WRITER] = "bgwriter",
+	[B_CHECKPOINTER] = "checkpointer",
+	[B_STARTUP] = "backend",	/* XXX same as backend? */
+	[B_WAL_RECEIVER] = "walreceiver",
+	[B_WAL_SUMMARIZER] = "walsummarizer",
+	[B_WAL_WRITER] = "walwriter",
+	[B_LOGGER] = "logger",
+};
+
+StaticAssertDecl(lengthof(log_min_messages_backend_types) == BACKEND_NUM_TYPES,
+				 "array length mismatch");
 
 
 /*
@@ -4224,6 +4278,18 @@ struct config_string ConfigureNamesString[] =
 	},
 
 	{
+		{"log_min_messages", PGC_SUSET, LOGGING_WHEN,
+			gettext_noop("Sets the message levels that are logged."),
+			gettext_noop("Each level includes all the levels that follow it. The later"
+						 " the level, the fewer messages are sent."),
+			GUC_LIST_INPUT
+		},
+		&log_min_messages_string,
+		"WARNING",
+		check_log_min_messages, assign_log_min_messages, NULL
+	},
+
+	{
 		{"log_line_prefix", PGC_SIGHUP, LOGGING_WHAT,
 			gettext_noop("Controls information prefixed to each log line."),
 			gettext_noop("An empty string means no prefix.")
@@ -5008,17 +5074,6 @@ struct config_enum ConfigureNamesEnum[] =
 		},
 		&Log_error_verbosity,
 		PGERROR_DEFAULT, log_error_verbosity_options,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"log_min_messages", PGC_SUSET, LOGGING_WHEN,
-			gettext_noop("Sets the message levels that are logged."),
-			gettext_noop("Each level includes all the levels that follow it. The later"
-						 " the level, the fewer messages are sent.")
-		},
-		&log_min_messages,
-		WARNING, server_message_level_options,
 		NULL, NULL, NULL
 	},
 
