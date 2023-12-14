@@ -59,6 +59,7 @@ static void disconnect_database(PGconn *conn);
 static uint64 get_sysid_from_conn(const char *conninfo);
 static uint64 get_control_from_datadir(const char *datadir);
 static void modify_sysid(const char *pg_resetwal_path, const char *datadir);
+static char *use_primary_slot_name(void);
 static bool create_all_logical_replication_slots(LogicalRepInfo *dbinfo);
 static char *create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
 											 char *slot_name);
@@ -82,6 +83,7 @@ static char *subscriber_dir = NULL;
 static char *pub_conninfo_str = NULL;
 static char *sub_conninfo_str = NULL;
 static SimpleStringList database_names = {NULL, NULL};
+static char *primary_slot_name = NULL;
 static bool dry_run = false;
 
 static bool success = false;
@@ -557,6 +559,72 @@ modify_sysid(const char *pg_resetwal_path, const char *datadir)
 	}
 
 	pfree(cf);
+}
+
+/*
+ * Return a palloc'd slot name if the replication is using one.
+ */
+static char *
+use_primary_slot_name(void)
+{
+	PGconn		*conn;
+	PGresult	*res;
+	PQExpBuffer str = createPQExpBuffer();
+	char		*slot_name;
+
+	conn = connect_database(dbinfo[0].subconninfo);
+	if (conn == NULL)
+		exit(1);
+
+	res = PQexec(conn, "SELECT setting FROM pg_settings WHERE name = 'primary_slot_name'");
+	if (PQresultStatus(res) != PGRES_TUPLES_OK)
+	{
+		pg_log_error("could not obtain parameter information: %s", PQresultErrorMessage(res));
+		return NULL;
+	}
+
+	/*
+	 * If primary_slot_name is an empty string, the current replication
+	 * connection is not using a replication slot, bail out.
+	 */
+	if (strcmp(PQgetvalue(res, 0, 0), "") == 0)
+	{
+		PQclear(res);
+		return NULL;
+	}
+
+	slot_name = pg_strdup(PQgetvalue(res, 0, 0));
+	PQclear(res);
+
+	disconnect_database(conn);
+
+	conn = connect_database(dbinfo[0].pubconninfo);
+	if (conn == NULL)
+		exit(1);
+
+	appendPQExpBuffer(str,
+				"SELECT 1 FROM pg_replication_slots r INNER JOIN pg_stat_activity a ON (r.active_pid = a.pid) WHERE slot_name = '%s'", slot_name);
+
+	pg_log_debug("command is: %s", str->data);
+
+	res = PQexec(conn, str->data);
+	if (PQresultStatus(res) != PGRES_TUPLES_OK)
+	{
+		pg_log_error("could not obtain replication slot information: %s", PQresultErrorMessage(res));
+		return NULL;
+	}
+
+	if (PQntuples(res) != 1)
+	{
+		pg_log_error("could not obtain replication slot information: got %d rows, expected %d row",
+					 PQntuples(res), 1);
+		return NULL;
+	}
+
+	PQclear(res);
+	disconnect_database(conn);
+
+	return slot_name;
 }
 
 static bool
@@ -1348,6 +1416,16 @@ main(int argc, char **argv)
 	 */
 	if (stat(pidfile, &statbuf) == 0)
 	{
+		/*
+		 * Since the standby server is running, check if it is using an
+		 * existing replication slot for WAL retention purposes. This
+		 * replication slot has no use after the transformation, hence, it will
+		 * be removed at the end of this process.
+		 */
+		primary_slot_name = use_primary_slot_name();
+		if (primary_slot_name != NULL)
+			pg_log_info("primary has replication slot \"%s\"", primary_slot_name);
+
 		pg_log_info("subscriber is up and running");
 		pg_log_info("stopping the server to start the transformation steps");
 
@@ -1480,6 +1558,8 @@ main(int argc, char **argv)
 	/*
 	 * The transient replication slot is no longer required. Drop it.
 	 *
+	 * If the physical replication slot exists, drop it.
+	 *
 	 * XXX we might not fail here. Instead, we provide a warning so the user
 	 * eventually drops the replication slot later.
 	 */
@@ -1488,10 +1568,13 @@ main(int argc, char **argv)
 	{
 		pg_log_warning("could not drop transient replication slot \"%s\" on publisher", temp_replslot);
 		pg_log_warning_hint("Drop this replication slot soon to avoid retention of WAL files.");
+		if (primary_slot_name != NULL)
+			pg_log_warning("could not drop replication slot \"%s\" on primary", primary_slot_name);
 	}
 	else
 	{
 		drop_replication_slot(conn, &dbinfo[0], temp_replslot);
+		drop_replication_slot(conn, &dbinfo[0], primary_slot_name);
 		disconnect_database(conn);
 	}
 
