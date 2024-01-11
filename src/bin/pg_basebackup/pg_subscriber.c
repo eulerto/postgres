@@ -151,8 +151,11 @@ cleanup_objects_atexit(void)
 	if (made_transient_replslot)
 	{
 		conn = connect_database(dbinfo[0].pubconninfo);
-		drop_replication_slot(conn, &dbinfo[0], temp_replslot);
-		disconnect_database(conn);
+		if (conn != NULL)
+		{
+			drop_replication_slot(conn, &dbinfo[0], temp_replslot);
+			disconnect_database(conn);
+		}
 	}
 }
 
