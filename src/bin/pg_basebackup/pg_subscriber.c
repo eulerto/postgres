@@ -467,7 +467,7 @@ get_sysid_from_conn(const char *conninfo)
 
 	sysid = strtou64(PQgetvalue(res, 0, 0), NULL, 10);
 
-	pg_log_info("system identifier is %ld on publisher", sysid);
+	pg_log_info("system identifier is %llu on publisher", (unsigned long long) sysid);
 
 	disconnect_database(conn);
 
@@ -497,7 +497,7 @@ get_control_from_datadir(const char *datadir)
 
 	sysid = cf->system_identifier;
 
-	pg_log_info("system identifier is %ld on subscriber", sysid);
+	pg_log_info("system identifier is %llu on subscriber", (unsigned long long) sysid);
 
 	pfree(cf);
 
@@ -541,7 +541,7 @@ modify_sysid(const char *pg_resetwal_path, const char *datadir)
 	if (!dry_run)
 		update_controlfile(datadir, cf, true);
 
-	pg_log_info("system identifier is %ld on subscriber", cf->system_identifier);
+	pg_log_info("system identifier is %llu on subscriber", (unsigned long long) cf->system_identifier);
 
 	pg_log_info("running pg_resetwal on the subscriber");
 
