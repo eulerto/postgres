@@ -1581,7 +1581,8 @@ main(int argc, char **argv)
 	else
 	{
 		drop_replication_slot(conn, &dbinfo[0], temp_replslot);
-		drop_replication_slot(conn, &dbinfo[0], primary_slot_name);
+		if (primary_slot_name != NULL)
+			drop_replication_slot(conn, &dbinfo[0], primary_slot_name);
 		disconnect_database(conn);
 	}
 
