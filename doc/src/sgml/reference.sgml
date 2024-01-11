@@ -258,7 +258,6 @@
    &pgReceivewal;
    &pgRecvlogical;
    &pgRestore;
-   &pgSubscriber;
    &pgVerifyBackup;
    &psqlRef;
    &reindexdb;
@@ -286,6 +285,7 @@
    &pgCtl;
    &pgResetwal;
    &pgRewind;
+   &pgSubscriber;
    &pgtestfsync;
    &pgtesttiming;
    &pgupgrade;
