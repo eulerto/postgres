@@ -1290,8 +1290,12 @@ main(int argc, char **argv)
 				sub_conninfo_str = pg_strdup(optarg);
 				break;
 			case 'd':
-				simple_string_list_append(&database_names, optarg);
-				num_dbs++;
+				/* Ignore duplicated database names. */
+				if (!simple_string_list_member(&database_names, optarg))
+				{
+					simple_string_list_append(&database_names, optarg);
+					num_dbs++;
+				}
 				break;
 			case 'n':
 				dry_run = true;
