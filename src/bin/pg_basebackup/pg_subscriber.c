@@ -573,10 +573,10 @@ modify_sysid(const char *pg_resetwal_path, const char *datadir)
 static char *
 use_primary_slot_name(void)
 {
-	PGconn		*conn;
-	PGresult	*res;
+	PGconn	   *conn;
+	PGresult   *res;
 	PQExpBuffer str = createPQExpBuffer();
-	char		*slot_name;
+	char	   *slot_name;
 
 	conn = connect_database(dbinfo[0].subconninfo);
 	if (conn == NULL)
@@ -609,7 +609,7 @@ use_primary_slot_name(void)
 		exit(1);
 
 	appendPQExpBuffer(str,
-				"SELECT 1 FROM pg_replication_slots r INNER JOIN pg_stat_activity a ON (r.active_pid = a.pid) WHERE slot_name = '%s'", slot_name);
+					  "SELECT 1 FROM pg_replication_slots r INNER JOIN pg_stat_activity a ON (r.active_pid = a.pid) WHERE slot_name = '%s'", slot_name);
 
 	pg_log_debug("command is: %s", str->data);
 
@@ -1229,7 +1229,7 @@ main(int argc, char **argv)
 	char	   *server_start_log;
 
 	char		timebuf[128];
-	struct timeval	time;
+	struct timeval time;
 	time_t		tt;
 	int			len;
 
@@ -1454,8 +1454,8 @@ main(int argc, char **argv)
 		/*
 		 * Since the standby server is running, check if it is using an
 		 * existing replication slot for WAL retention purposes. This
-		 * replication slot has no use after the transformation, hence, it will
-		 * be removed at the end of this process.
+		 * replication slot has no use after the transformation, hence, it
+		 * will be removed at the end of this process.
 		 */
 		primary_slot_name = use_primary_slot_name();
 		if (primary_slot_name != NULL)
