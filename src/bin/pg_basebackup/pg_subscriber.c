@@ -699,7 +699,7 @@ create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
 								char *slot_name)
 {
 	PQExpBuffer str = createPQExpBuffer();
-	PGresult   *res;
+	PGresult   *res = NULL;
 	char	   *lsn = NULL;
 	bool		transient_replslot = false;
 
