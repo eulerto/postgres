@@ -640,12 +640,41 @@ use_primary_slot_name(void)
 static bool
 setup_publisher(LogicalRepInfo *dbinfo)
 {
+	PGconn	   *conn;
+	PGresult   *res;
 	int			i;
+
+	/*
+	 * Check if wal_level is logical on primary.
+	 */
+	conn = connect_database(dbinfo[0].pubconninfo);
+	if (conn == NULL)
+		exit(1);
+
+	res = PQexec(conn, "SELECT setting = 'logical' FROM pg_settings WHERE name = 'wal_level'");
+
+	if (PQresultStatus(res) != PGRES_TUPLES_OK)
+	{
+		pg_log_error("could not obtain wal_level setting: %s", PQresultErrorMessage(res));
+		return false;
+	}
+
+	if (PQgetvalue(res, 0, 0)[0] == 't')
+	{
+		pg_log_info("checking if wal_level = logical on primary");
+	}
+	else
+	{
+		pg_log_error("wal_level must be \"logical\" on primary");
+		return false;
+	}
+
+	PQclear(res);
+
+	disconnect_database(conn);
 
 	for (i = 0; i < num_dbs; i++)
 	{
-		PGconn	   *conn;
-		PGresult   *res;
 		char		pubname[NAMEDATALEN];
 		char		replslotname[NAMEDATALEN];
 
