@@ -63,7 +63,7 @@ static uint64 get_sysid_from_conn(const char *conninfo);
 static uint64 get_control_from_datadir(const char *datadir);
 static void modify_sysid(const char *pg_resetwal_path, const char *datadir);
 static char *use_primary_slot_name(void);
-static bool create_all_logical_replication_slots(LogicalRepInfo *dbinfo);
+static bool setup_publisher(LogicalRepInfo *dbinfo);
 static char *create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
 											 char *slot_name);
 static void drop_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo, const char *slot_name);
@@ -633,8 +633,12 @@ use_primary_slot_name(void)
 	return slot_name;
 }
 
+/*
+ * Creates the publications and replication slots in preparation for logical
+ * replication.
+ */
 static bool
-create_all_logical_replication_slots(LogicalRepInfo *dbinfo)
+setup_publisher(LogicalRepInfo *dbinfo)
 {
 	int			i;
 
@@ -642,6 +646,7 @@ create_all_logical_replication_slots(LogicalRepInfo *dbinfo)
 	{
 		PGconn	   *conn;
 		PGresult   *res;
+		char		pubname[NAMEDATALEN];
 		char		replslotname[NAMEDATALEN];
 
 		conn = connect_database(dbinfo[i].pubconninfo);
@@ -667,6 +672,22 @@ create_all_logical_replication_slots(LogicalRepInfo *dbinfo)
 		dbinfo[i].oid = strtoul(PQgetvalue(res, 0, 0), NULL, 10);
 
 		PQclear(res);
+
+		/*
+		 * Build the publication name. The name must not exceed NAMEDATALEN -
+		 * 1. This current schema uses a maximum of 35 characters (14 + 10 +
+		 * '\0').
+		 */
+		snprintf(pubname, sizeof(pubname), "pg_subscriber_%u", dbinfo[i].oid);
+		dbinfo[i].pubname = pg_strdup(pubname);
+
+		/*
+		 * Create publication on publisher. This step should be executed
+		 * *before* promoting the subscriber to avoid any transactions between
+		 * consistent LSN and the new publication rows (such transactions
+		 * wouldn't see the new publication rows resulting in an error).
+		 */
+		create_publication(conn, &dbinfo[i]);
 
 		/*
 		 * Build the replication slot name. The name must not exceed
@@ -1470,9 +1491,9 @@ main(int argc, char **argv)
 	}
 
 	/*
-	 * Create a replication slot for each database on the publisher.
+	 * Create the required objects for each database on publisher.
 	 */
-	if (!create_all_logical_replication_slots(dbinfo))
+	if (!setup_publisher(dbinfo))
 		exit(1);
 
 	/*
@@ -1556,33 +1577,6 @@ main(int argc, char **argv)
 	 * Waiting the subscriber to be promoted.
 	 */
 	wait_for_end_recovery(dbinfo[0].subconninfo);
-
-	/*
-	 * Create a publication for each database. This step should be executed
-	 * after promoting the subscriber to avoid replicating unnecessary
-	 * objects.
-	 */
-	for (i = 0; i < num_dbs; i++)
-	{
-		char		pubname[NAMEDATALEN];
-
-		/* Connect to publisher. */
-		conn = connect_database(dbinfo[i].pubconninfo);
-		if (conn == NULL)
-			exit(1);
-
-		/*
-		 * Build the publication name. The name must not exceed NAMEDATALEN -
-		 * 1. This current schema uses a maximum of 35 characters (14 + 10 +
-		 * '\0').
-		 */
-		snprintf(pubname, sizeof(pubname), "pg_subscriber_%u", dbinfo[i].oid);
-		dbinfo[i].pubname = pg_strdup(pubname);
-
-		create_publication(conn, &dbinfo[i]);
-
-		disconnect_database(conn);
-	}
 
 	/*
 	 * Create a subscription for each database.
