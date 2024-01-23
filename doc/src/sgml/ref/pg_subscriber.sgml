@@ -16,7 +16,7 @@ PostgreSQL documentation
 
  <refnamediv>
   <refname>pg_subscriber</refname>
-  <refpurpose>create a new logical replica from a standby server</refpurpose>
+  <refpurpose>convert a physical replica into a new logical replica</refpurpose>
  </refnamediv>
 
  <refsynopsisdiv>
@@ -30,7 +30,7 @@ PostgreSQL documentation
   <title>Description</title>
   <para>
    <application>pg_subscriber</application> takes the publisher and subscriber
-   connection strings, a cluster directory from a standby server and a list of
+   connection strings, a cluster directory from a physical replica and a list of
    database names and it sets up a new logical replica using the physical
    recovery process.
   </para>
@@ -56,8 +56,8 @@ PostgreSQL documentation
       <term><option>--pgdata=<replaceable class="parameter">directory</replaceable></option></term>
       <listitem>
        <para>
-        The target directory that contains a cluster directory from a standby
-        server.
+        The target directory that contains a cluster directory from a physical
+        replica.
        </para>
       </listitem>
      </varlistentry>
@@ -169,7 +169,7 @@ PostgreSQL documentation
    <step>
     <para>
      <application>pg_subscriber</application> checks if the target data
-     directory is used by a standby server. Stop the standby server if it is
+     directory is used by a physical replica. Stop the physical replica if it is
      running. One of the next steps is to add some recovery parameters that
      requires a server start. This step avoids an error.
     </para>
@@ -265,7 +265,7 @@ PostgreSQL documentation
 
   <para>
    To create a logical replica for databases <literal>hr</literal> and
-   <literal>finance</literal> from a standby server at <literal>foo</literal>:
+   <literal>finance</literal> from a physical replica at <literal>foo</literal>:
 <screen>
 <prompt>$</prompt> <userinput>pg_subscriber -D /usr/local/pgsql/data -P "host=foo" -S "host=localhost" -d hr -d finance</userinput>
 </screen>
