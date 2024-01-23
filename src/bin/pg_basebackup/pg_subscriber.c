@@ -6,7 +6,7 @@
  * Copyright (C) 2024, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
- *		src/bin/pg_subscriber/pg_subscriber.c
+ *		src/bin/pg_basebackup/pg_subscriber.c
  *
  *-------------------------------------------------------------------------
  */
