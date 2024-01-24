@@ -1605,10 +1605,10 @@ main(int argc, char **argv)
 	snprintf(pidfile, MAXPGPATH, "%s/postmaster.pid", subscriber_dir);
 
 	/*
-	 * Stop the subscriber if it is a standby server. Before executing the
-	 * transformation steps, make sure the subscriber is not running because
-	 * one of the steps is to modify some recovery parameters that require a
-	 * restart.
+	 * The standby server must be running. That's because some checks will be
+	 * done (is it ready for a logical replication setup?). After that, stop
+	 * the subscriber in preparation to modify some recovery parameters that
+	 * require a restart.
 	 */
 	if (stat(pidfile, &statbuf) == 0)
 	{
@@ -1628,12 +1628,18 @@ main(int argc, char **argv)
 		if (primary_slot_name != NULL)
 			pg_log_info("primary has replication slot \"%s\"", primary_slot_name);
 
-		pg_log_info("subscriber is up and running");
+		pg_log_info("standby is up and running");
 		pg_log_info("stopping the server to start the transformation steps");
 
 		pg_ctl_cmd = psprintf("\"%s\" stop -D \"%s\" -s", pg_ctl_path, subscriber_dir);
 		rc = system(pg_ctl_cmd);
 		pg_ctl_status(pg_ctl_cmd, rc, 0);
+	}
+	else
+	{
+		pg_log_error("standby is not running");
+		pg_log_error_hint("Start the standby and try again.");
+		exit(1);
 	}
 
 	/*
