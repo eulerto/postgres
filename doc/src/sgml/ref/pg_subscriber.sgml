@@ -104,6 +104,16 @@ PostgreSQL documentation
      </varlistentry>
 
      <varlistentry>
+      <term><option>-r</option></term>
+      <term><option>--retain</option></term>
+      <listitem>
+       <para>
+        Retain log file even after successful completion.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
       <term><option>-v</option></term>
       <term><option>--verbose</option></term>
       <listitem>
