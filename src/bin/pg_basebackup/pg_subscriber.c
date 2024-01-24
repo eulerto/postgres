@@ -646,34 +646,68 @@ setup_publisher(LogicalRepInfo *dbinfo)
 	PGresult   *res;
 	int			i;
 
+	char	   *wal_level;
+	int			max_repslots;
+	int			cur_repslots;
+
+	pg_log_info("checking settings on publisher");
+
 	/*
-	 * Check if wal_level is logical on primary.
+	 * Logical replication requires a few parameters to be set on publisher.
+	 * Since these parameters are not a requirement for physical replication,
+	 * we should check it to make sure it won't fail.
+	 *
+	 * - wal_level = logical
+	 * - max_replication_slots >= current + number of databases to be converted
+	 * - max_wal_senders >= current + number of databases to be converted
 	 */
 	conn = connect_database(dbinfo[0].pubconninfo);
 	if (conn == NULL)
 		exit(1);
 
-	res = PQexec(conn, "SELECT setting = 'logical' FROM pg_settings WHERE name = 'wal_level'");
+	res = PQexec(conn,
+			"WITH wl AS (SELECT setting AS wallevel FROM pg_settings WHERE name = 'wal_level'),
+				total_mrs AS (SELECT setting AS tmrs FROM pg_settings WHERE name = 'max_replication_slots'),
+				cur_mrs AS (SELECT count(*) AS cmrs FROM pg_replication_slots),
+				total_mws AS (SELECT setting AS tmws FROM pg_settings WHERE name = 'max_wal_senders'),
+				cur_mws AS (SELECT count(*) AS cmws FROM pg_stat_activity WHERE backend_type = 'walsender')
+			SELECT wallevel, tmrs, cmrs, tmws, cmws FROM wl, total_mrs, cur_mrs, total_mws, cur_mws");
 
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
-		pg_log_error("could not obtain wal_level setting: %s", PQresultErrorMessage(res));
+		pg_log_error("could not obtain publisher settings: %s", PQresultErrorMessage(res));
 		return false;
 	}
 
-	if (PQgetvalue(res, 0, 0)[0] == 't')
-	{
-		pg_log_info("checking if wal_level = logical on primary");
-	}
-	else
-	{
-		pg_log_error("wal_level must be \"logical\" on primary");
-		return false;
-	}
+	wal_level = strdup(PQgetvalue(res, 0, 0));
+	max_repslots = atoi(PQgetvalue(res, 0, 1));
+	cur_repslots = atoi(PQgetvalue(res, 0, 2));
+	max_walsenders = atoi(PQgetvalue(res, 0, 3));
+	cur_walsenders = atoi(PQgetvalue(res, 0, 4));
 
 	PQclear(res);
 
 	disconnect_database(conn);
+
+	if (strcmp(wal_level, "logical") != 0)
+	{
+		pg_log_error("publisher requires wal_level >= logical");
+		return false;
+	}
+
+	if (max_repslots - cur_repslots < num_dbs)
+	{
+		pg_log_error("publisher requires %d replication slots, but only %d remain", num_dbs, max_repslots - cur_repslots);
+		pg_log_error_hint("Consider increasing max_replication_slots to at least %d.", cur_repslots + num_dbs);
+		return false;
+	}
+
+	if (max_walsenders - cur_walsenders < num_dbs)
+	{
+		pg_log_error("publisher requires %d wal sender processes, but only %d remain", num_dbs, max_walsenders - cur_walsenders);
+		pg_log_error_hint("Consider increasing max_wal_senders to at least %d.", cur_walsenders + num_dbs);
+		return false;
+	}
 
 	for (i = 0; i < num_dbs; i++)
 	{
