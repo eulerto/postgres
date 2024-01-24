@@ -636,8 +636,8 @@ use_primary_slot_name(void)
 }
 
 /*
- * Creates the publications and replication slots in preparation for logical
- * replication.
+ * Is the source server ready for logical replication? If so, create the
+ * publications and replication slots in preparation for logical replication.
  */
 static bool
 setup_publisher(LogicalRepInfo *dbinfo)
@@ -649,6 +649,8 @@ setup_publisher(LogicalRepInfo *dbinfo)
 	char	   *wal_level;
 	int			max_repslots;
 	int			cur_repslots;
+	int			max_walsenders;
+	int			cur_walsenders;
 
 	pg_log_info("checking settings on publisher");
 
@@ -666,12 +668,12 @@ setup_publisher(LogicalRepInfo *dbinfo)
 		exit(1);
 
 	res = PQexec(conn,
-			"WITH wl AS (SELECT setting AS wallevel FROM pg_settings WHERE name = 'wal_level'),
-				total_mrs AS (SELECT setting AS tmrs FROM pg_settings WHERE name = 'max_replication_slots'),
-				cur_mrs AS (SELECT count(*) AS cmrs FROM pg_replication_slots),
-				total_mws AS (SELECT setting AS tmws FROM pg_settings WHERE name = 'max_wal_senders'),
-				cur_mws AS (SELECT count(*) AS cmws FROM pg_stat_activity WHERE backend_type = 'walsender')
-			SELECT wallevel, tmrs, cmrs, tmws, cmws FROM wl, total_mrs, cur_mrs, total_mws, cur_mws");
+			"WITH wl AS (SELECT setting AS wallevel FROM pg_settings WHERE name = 'wal_level'),"
+			"     total_mrs AS (SELECT setting AS tmrs FROM pg_settings WHERE name = 'max_replication_slots'),"
+			"     cur_mrs AS (SELECT count(*) AS cmrs FROM pg_replication_slots),"
+			"     total_mws AS (SELECT setting AS tmws FROM pg_settings WHERE name = 'max_wal_senders'),"
+			"     cur_mws AS (SELECT count(*) AS cmws FROM pg_stat_activity WHERE backend_type = 'walsender')"
+			"SELECT wallevel, tmrs, cmrs, tmws, cmws FROM wl, total_mrs, cur_mrs, total_mws, cur_mws");
 
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
@@ -774,6 +776,75 @@ setup_publisher(LogicalRepInfo *dbinfo)
 			return false;
 
 		disconnect_database(conn);
+	}
+
+	return true;
+}
+
+/*
+ * Is the target server ready for logical replication?
+ */
+static bool
+setup_subscriber(LogicalRepInfo *dbinfo)
+{
+	PGconn	   *conn;
+	PGresult   *res;
+
+	int			max_lrworkers;
+	int			max_repslots;
+	int			max_wprocs;
+
+	pg_log_info("checking settings on subscriber");
+
+	/*
+	 * Logical replication requires a few parameters to be set on subscriber.
+	 * Since these parameters are not a requirement for physical replication,
+	 * we should check it to make sure it won't fail.
+	 *
+	 * - max_replication_slots >= number of databases to be converted
+	 * - max_logical_replication_workers >= number of databases to be converted
+	 * - max_worker_processes >= 1 + number of databases to be converted
+	 */
+	conn = connect_database(dbinfo[0].subconninfo);
+	if (conn == NULL)
+		exit(1);
+
+	res = PQexec(conn,
+			"SELECT setting FROM pg_settings WHERE name IN ('max_logical_replication_workers', 'max_replication_slots', 'max_worker_processes') ORDER BY name");
+
+	if (PQresultStatus(res) != PGRES_TUPLES_OK)
+	{
+		pg_log_error("could not obtain subscriber settings: %s", PQresultErrorMessage(res));
+		return false;
+	}
+
+	max_lrworkers = atoi(PQgetvalue(res, 0, 0));
+	max_repslots = atoi(PQgetvalue(res, 0, 1));
+	max_wprocs = atoi(PQgetvalue(res, 0, 2));
+
+	PQclear(res);
+
+	disconnect_database(conn);
+
+	if (max_repslots < num_dbs)
+	{
+		pg_log_error("subscriber requires %d replication slots, but only %d remain", num_dbs, max_repslots);
+		pg_log_error_hint("Consider increasing max_replication_slots to at least %d.", num_dbs);
+		return false;
+	}
+
+	if (max_lrworkers < num_dbs)
+	{
+		pg_log_error("subscriber requires %d logical replication workers, but only %d remain", num_dbs, max_lrworkers);
+		pg_log_error_hint("Consider increasing max_logical_replication_workers to at least %d.", num_dbs);
+		return false;
+	}
+
+	if (max_wprocs < num_dbs + 1)
+	{
+		pg_log_error("subscriber requires %d worker processes, but only %d remain", num_dbs + 1, max_wprocs);
+		pg_log_error_hint("Consider increasing max_worker_processes to at least %d.", num_dbs + 1);
+		return false;
 	}
 
 	return true;
@@ -1541,6 +1612,12 @@ main(int argc, char **argv)
 	 */
 	if (stat(pidfile, &statbuf) == 0)
 	{
+		/*
+		 * Check if the standby server is ready for logical replication.
+		 */
+		if (!setup_subscriber(dbinfo))
+			exit(1);
+
 		/*
 		 * Since the standby server is running, check if it is using an
 		 * existing replication slot for WAL retention purposes. This
