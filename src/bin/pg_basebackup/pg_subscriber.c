@@ -1630,6 +1630,16 @@ main(int argc, char **argv)
 		if (!setup_subscriber(dbinfo))
 			exit(1);
 
+		/*
+		 * Check if the primary server is ready for logical replication and
+		 * create the required objects for each database on publisher.
+		 * This step is here mainly because if we stop the standby we cannot
+		 * verify if the primary slot is in use. We could use an extra
+		 * connection for it but it doesn't seem worth.
+		 */
+		if (!setup_publisher(dbinfo))
+			exit(1);
+
 		pg_log_info("standby is up and running");
 		pg_log_info("stopping the server to start the transformation steps");
 
@@ -1643,12 +1653,6 @@ main(int argc, char **argv)
 		pg_log_error_hint("Start the standby and try again.");
 		exit(1);
 	}
-
-	/*
-	 * Create the required objects for each database on publisher.
-	 */
-	if (!setup_publisher(dbinfo))
-		exit(1);
 
 	/*
 	 * Create a logical replication slot to get a consistent LSN.
