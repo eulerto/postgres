@@ -62,7 +62,6 @@ static void disconnect_database(PGconn *conn);
 static uint64 get_sysid_from_conn(const char *conninfo);
 static uint64 get_control_from_datadir(const char *datadir);
 static void modify_sysid(const char *pg_resetwal_path, const char *datadir);
-static char *use_primary_slot_name(void);
 static bool setup_publisher(LogicalRepInfo *dbinfo);
 static char *create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
 											 char *slot_name);
@@ -572,72 +571,6 @@ modify_sysid(const char *pg_resetwal_path, const char *datadir)
 }
 
 /*
- * Return a palloc'd slot name if the replication is using one.
- */
-static char *
-use_primary_slot_name(void)
-{
-	PGconn	   *conn;
-	PGresult   *res;
-	PQExpBuffer str = createPQExpBuffer();
-	char	   *slot_name;
-
-	conn = connect_database(dbinfo[0].subconninfo);
-	if (conn == NULL)
-		exit(1);
-
-	res = PQexec(conn, "SELECT setting FROM pg_settings WHERE name = 'primary_slot_name'");
-	if (PQresultStatus(res) != PGRES_TUPLES_OK)
-	{
-		pg_log_error("could not obtain parameter information: %s", PQresultErrorMessage(res));
-		return NULL;
-	}
-
-	/*
-	 * If primary_slot_name is an empty string, the current replication
-	 * connection is not using a replication slot, bail out.
-	 */
-	if (strcmp(PQgetvalue(res, 0, 0), "") == 0)
-	{
-		PQclear(res);
-		return NULL;
-	}
-
-	slot_name = pg_strdup(PQgetvalue(res, 0, 0));
-	PQclear(res);
-
-	disconnect_database(conn);
-
-	conn = connect_database(dbinfo[0].pubconninfo);
-	if (conn == NULL)
-		exit(1);
-
-	appendPQExpBuffer(str,
-					  "SELECT 1 FROM pg_replication_slots r INNER JOIN pg_stat_activity a ON (r.active_pid = a.pid) WHERE slot_name = '%s'", slot_name);
-
-	pg_log_debug("command is: %s", str->data);
-
-	res = PQexec(conn, str->data);
-	if (PQresultStatus(res) != PGRES_TUPLES_OK)
-	{
-		pg_log_error("could not obtain replication slot information: %s", PQresultErrorMessage(res));
-		return NULL;
-	}
-
-	if (PQntuples(res) != 1)
-	{
-		pg_log_error("could not obtain replication slot information: got %d rows, expected %d row",
-					 PQntuples(res), 1);
-		return NULL;
-	}
-
-	PQclear(res);
-	disconnect_database(conn);
-
-	return slot_name;
-}
-
-/*
  * Is the source server ready for logical replication? If so, create the
  * publications and replication slots in preparation for logical replication.
  */
@@ -646,7 +579,7 @@ setup_publisher(LogicalRepInfo *dbinfo)
 {
 	PGconn	   *conn;
 	PGresult   *res;
-	int			i;
+	PQExpBuffer str = createPQExpBuffer();
 
 	char	   *wal_level;
 	int			max_repslots;
@@ -692,6 +625,42 @@ setup_publisher(LogicalRepInfo *dbinfo)
 
 	PQclear(res);
 
+	/*
+	 * If standby sets primary_slot_name, check if this replication slot is in
+	 * use on primary for WAL retention purposes. This replication slot has no
+	 * use after the transformation, hence, it will be removed at the end of
+	 * this process.
+	 */
+	if (primary_slot_name)
+	{
+		appendPQExpBuffer(str,
+						  "SELECT 1 FROM pg_replication_slots WHERE active AND slot_name = '%s'", primary_slot_name);
+
+		pg_log_debug("command is: %s", str->data);
+
+		res = PQexec(conn, str->data);
+		if (PQresultStatus(res) != PGRES_TUPLES_OK)
+		{
+			pg_log_error("could not obtain replication slot information: %s", PQresultErrorMessage(res));
+			return false;
+		}
+
+		if (PQntuples(res) != 1)
+		{
+			pg_log_error("could not obtain replication slot information: got %d rows, expected %d row",
+						 PQntuples(res), 1);
+			pg_free(primary_slot_name);		/* it is not being used. */
+			primary_slot_name = NULL;
+			return false;
+		}
+		else
+		{
+			pg_log_info("primary has replication slot \"%s\"", primary_slot_name);
+		}
+
+		PQclear(res);
+	}
+
 	disconnect_database(conn);
 
 	if (strcmp(wal_level, "logical") != 0)
@@ -714,7 +683,7 @@ setup_publisher(LogicalRepInfo *dbinfo)
 		return false;
 	}
 
-	for (i = 0; i < num_dbs; i++)
+	for (int i = 0; i < num_dbs; i++)
 	{
 		char		pubname[NAMEDATALEN];
 		char		replslotname[NAMEDATALEN];
@@ -813,7 +782,7 @@ setup_subscriber(LogicalRepInfo *dbinfo)
 		exit(1);
 
 	res = PQexec(conn,
-				 "SELECT setting FROM pg_settings WHERE name IN ('max_logical_replication_workers', 'max_replication_slots', 'max_worker_processes') ORDER BY name");
+				 "SELECT setting FROM pg_settings WHERE name IN ('max_logical_replication_workers', 'max_replication_slots', 'max_worker_processes', 'primary_slot_name') ORDER BY name");
 
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
@@ -822,8 +791,10 @@ setup_subscriber(LogicalRepInfo *dbinfo)
 	}
 
 	max_lrworkers = atoi(PQgetvalue(res, 0, 0));
-	max_repslots = atoi(PQgetvalue(res, 0, 1));
-	max_wprocs = atoi(PQgetvalue(res, 0, 2));
+	max_repslots = atoi(PQgetvalue(res, 1, 0));
+	max_wprocs = atoi(PQgetvalue(res, 2, 0));
+	if (!PQgetisnull(res, 3, 0))
+		primary_slot_name = pg_strdup(PQgetvalue(res, 3, 0));
 
 	PQclear(res);
 
@@ -1648,16 +1619,6 @@ main(int argc, char **argv)
 		if (!setup_subscriber(dbinfo))
 			exit(1);
 
-		/*
-		 * Since the standby server is running, check if it is using an
-		 * existing replication slot for WAL retention purposes. This
-		 * replication slot has no use after the transformation, hence, it
-		 * will be removed at the end of this process.
-		 */
-		primary_slot_name = use_primary_slot_name();
-		if (primary_slot_name != NULL)
-			pg_log_info("primary has replication slot \"%s\"", primary_slot_name);
-
 		pg_log_info("standby is up and running");
 		pg_log_info("stopping the server to start the transformation steps");
 
@@ -1792,10 +1753,10 @@ main(int argc, char **argv)
 	conn = connect_database(dbinfo[0].pubconninfo);
 	if (conn == NULL)
 	{
-		pg_log_warning("could not drop transient replication slot \"%s\" on publisher", temp_replslot);
-		pg_log_warning_hint("Drop this replication slot soon to avoid retention of WAL files.");
 		if (primary_slot_name != NULL)
 			pg_log_warning("could not drop replication slot \"%s\" on primary", primary_slot_name);
+		pg_log_warning("could not drop transient replication slot \"%s\" on publisher", temp_replslot);
+		pg_log_warning_hint("Drop this replication slot soon to avoid retention of WAL files.");
 	}
 	else
 	{
