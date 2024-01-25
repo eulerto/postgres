@@ -187,7 +187,7 @@ usage(void)
 
 /*
  * Validate a connection string. Returns a base connection string that is a
- * connection string without a database name plus a fallback application name.
+ * connection string without a database name.
  * Since we might process multiple databases, each database name will be
  * appended to this base connection string to provide a final connection string.
  * If the second argument (dbname) is not null, returns dbname if the provided
@@ -233,10 +233,6 @@ get_base_conninfo(char *conninfo, char *dbname, const char *noderole)
 			i++;
 		}
 	}
-
-	if (i > 0)
-		appendPQExpBufferChar(buf, ' ');
-	appendPQExpBuffer(buf, "fallback_application_name=%s", progname);
 
 	ret = pg_strdup(buf->data);
 
