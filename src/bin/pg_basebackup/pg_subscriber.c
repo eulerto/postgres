@@ -799,7 +799,7 @@ setup_subscriber(LogicalRepInfo *dbinfo)
 	max_lrworkers = atoi(PQgetvalue(res, 0, 0));
 	max_repslots = atoi(PQgetvalue(res, 1, 0));
 	max_wprocs = atoi(PQgetvalue(res, 2, 0));
-	if (!PQgetisnull(res, 3, 0))
+	if (strcmp(PQgetvalue(res, 3, 0), "") != 0)
 		primary_slot_name = pg_strdup(PQgetvalue(res, 3, 0));
 
 	pg_log_debug("subscriber: max_logical_replication_workers: %d", max_lrworkers);
