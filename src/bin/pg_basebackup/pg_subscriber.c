@@ -625,6 +625,12 @@ setup_publisher(LogicalRepInfo *dbinfo)
 
 	PQclear(res);
 
+	pg_log_debug("subscriber: wal_level: %s", wal_level);
+	pg_log_debug("subscriber: max_replication_slots: %d", max_repslots);
+	pg_log_debug("subscriber: current replication slots: %d", cur_repslots);
+	pg_log_debug("subscriber: max_wal_senders: %d", max_walsenders);
+	pg_log_debug("subscriber: current wal senders: %d", cur_walsenders);
+
 	/*
 	 * If standby sets primary_slot_name, check if this replication slot is in
 	 * use on primary for WAL retention purposes. This replication slot has no
@@ -795,6 +801,11 @@ setup_subscriber(LogicalRepInfo *dbinfo)
 	max_wprocs = atoi(PQgetvalue(res, 2, 0));
 	if (!PQgetisnull(res, 3, 0))
 		primary_slot_name = pg_strdup(PQgetvalue(res, 3, 0));
+
+	pg_log_debug("subscriber: max_logical_replication_workers: %d", max_lrworkers);
+	pg_log_debug("subscriber: max_replication_slots: %d", max_repslots);
+	pg_log_debug("subscriber: max_worker_processes: %d", max_wprocs);
+	pg_log_debug("subscriber: primary_slot_name: %s", primary_slot_name);
 
 	PQclear(res);
 
