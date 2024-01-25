@@ -662,20 +662,21 @@ setup_publisher(LogicalRepInfo *dbinfo)
 	 * we should check it to make sure it won't fail.
 	 *
 	 * - wal_level = logical
-	 * - max_replication_slots >= current + number of databases to be converted
-	 * - max_wal_senders >= current + number of databases to be converted
+	 * - max_replication_slots >= current + number of dbs to be converted
+	 * - max_wal_senders >= current + number of dbs to be converted
+	 *
 	 */
 	conn = connect_database(dbinfo[0].pubconninfo);
 	if (conn == NULL)
 		exit(1);
 
 	res = PQexec(conn,
-			"WITH wl AS (SELECT setting AS wallevel FROM pg_settings WHERE name = 'wal_level'),"
-			"     total_mrs AS (SELECT setting AS tmrs FROM pg_settings WHERE name = 'max_replication_slots'),"
-			"     cur_mrs AS (SELECT count(*) AS cmrs FROM pg_replication_slots),"
-			"     total_mws AS (SELECT setting AS tmws FROM pg_settings WHERE name = 'max_wal_senders'),"
-			"     cur_mws AS (SELECT count(*) AS cmws FROM pg_stat_activity WHERE backend_type = 'walsender')"
-			"SELECT wallevel, tmrs, cmrs, tmws, cmws FROM wl, total_mrs, cur_mrs, total_mws, cur_mws");
+				 "WITH wl AS (SELECT setting AS wallevel FROM pg_settings WHERE name = 'wal_level'),"
+				 "     total_mrs AS (SELECT setting AS tmrs FROM pg_settings WHERE name = 'max_replication_slots'),"
+				 "     cur_mrs AS (SELECT count(*) AS cmrs FROM pg_replication_slots),"
+				 "     total_mws AS (SELECT setting AS tmws FROM pg_settings WHERE name = 'max_wal_senders'),"
+				 "     cur_mws AS (SELECT count(*) AS cmws FROM pg_stat_activity WHERE backend_type = 'walsender')"
+				 "SELECT wallevel, tmrs, cmrs, tmws, cmws FROM wl, total_mrs, cur_mrs, total_mws, cur_mws");
 
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
@@ -803,16 +804,16 @@ setup_subscriber(LogicalRepInfo *dbinfo)
 	 * Since these parameters are not a requirement for physical replication,
 	 * we should check it to make sure it won't fail.
 	 *
-	 * - max_replication_slots >= number of databases to be converted
-	 * - max_logical_replication_workers >= number of databases to be converted
-	 * - max_worker_processes >= 1 + number of databases to be converted
+	 * - max_replication_slots >= number of dbs to be converted
+	 * - max_logical_replication_workers >= number of dbs to be converted
+	 * - max_worker_processes >= 1 + number of dbs to be converted
 	 */
 	conn = connect_database(dbinfo[0].subconninfo);
 	if (conn == NULL)
 		exit(1);
 
 	res = PQexec(conn,
-			"SELECT setting FROM pg_settings WHERE name IN ('max_logical_replication_workers', 'max_replication_slots', 'max_worker_processes') ORDER BY name");
+				 "SELECT setting FROM pg_settings WHERE name IN ('max_logical_replication_workers', 'max_replication_slots', 'max_worker_processes') ORDER BY name");
 
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
@@ -1819,8 +1820,8 @@ main(int argc, char **argv)
 	modify_sysid(pg_resetwal_path, subscriber_dir);
 
 	/*
-	 * The log file is kept if retain option is specified or this tool does not
-	 * run successfully. Otherwise, log file is removed.
+	 * The log file is kept if retain option is specified or this tool does
+	 * not run successfully. Otherwise, log file is removed.
 	 */
 	if (!retain)
 		unlink(server_start_log);
