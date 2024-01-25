@@ -89,6 +89,7 @@ static SimpleStringList database_names = {NULL, NULL};
 static char *primary_slot_name = NULL;
 static bool dry_run = false;
 static bool retain = false;
+static int	recovery_timeout = 0;
 
 static bool success = false;
 
@@ -176,6 +177,7 @@ usage(void)
 	printf(_(" -S, --subscriber-conninfo=CONNINFO  subscriber connection string\n"));
 	printf(_(" -d, --database=DBNAME               database to create a subscription\n"));
 	printf(_(" -n, --dry-run                       stop before modifying anything\n"));
+	printf(_(" -t, --recovery-timeout=SECS         seconds to wait for recovery to end\n"));
 	printf(_(" -r, --retain                        retain log file after success\n"));
 	printf(_(" -v, --verbose                       output verbose messages\n"));
 	printf(_(" -V, --version                       output version information, then exit\n"));
@@ -980,6 +982,9 @@ pg_ctl_status(const char *pg_ctl_cmd, int rc, int action)
 
 /*
  * Returns after the server finishes the recovery process.
+ *
+ * If recovery_timeout option is set, terminate abnormally without finishing
+ * the recovery process. By default, it waits forever.
  */
 static void
 wait_for_end_recovery(const char *conninfo)
@@ -987,6 +992,10 @@ wait_for_end_recovery(const char *conninfo)
 	PGconn	   *conn;
 	PGresult   *res;
 	int			status = POSTMASTER_STILL_STARTING;
+	int			timer = 0;
+
+	char	   *pg_ctl_cmd;
+	int			rc;
 
 	pg_log_info("waiting the postmaster to reach the consistent state");
 
@@ -1026,8 +1035,24 @@ wait_for_end_recovery(const char *conninfo)
 			break;
 		}
 
+		/*
+		 * Bail out after recovery_timeout seconds if this option is set.
+		 */
+		if (recovery_timeout > 0 && timer >= recovery_timeout)
+		{
+			pg_log_error("recovery timed out");
+
+			pg_ctl_cmd = psprintf("\"%s\" stop -D \"%s\" -s", pg_ctl_path, subscriber_dir);
+			rc = system(pg_ctl_cmd);
+			pg_ctl_status(pg_ctl_cmd, rc, 0);
+
+			exit(1);
+		}
+
 		/* Keep waiting. */
 		pg_usleep(WAIT_INTERVAL * USEC_PER_SEC);
+
+		timer += WAIT_INTERVAL;
 	}
 
 	disconnect_database(conn);
@@ -1372,6 +1397,7 @@ main(int argc, char **argv)
 		{"subscriber-conninfo", required_argument, NULL, 'S'},
 		{"database", required_argument, NULL, 'd'},
 		{"dry-run", no_argument, NULL, 'n'},
+		{"recovery-timeout", required_argument, NULL, 't'},
 		{"retain", no_argument, NULL, 'r'},
 		{"verbose", no_argument, NULL, 'v'},
 		{NULL, 0, NULL, 0}
@@ -1471,6 +1497,9 @@ main(int argc, char **argv)
 				break;
 			case 'r':
 				retain = true;
+				break;
+			case 't':
+				recovery_timeout = atoi(optarg);
 				break;
 			case 'v':
 				pg_logging_increase_verbosity();
