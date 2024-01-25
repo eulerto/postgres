@@ -590,10 +590,9 @@ setup_publisher(LogicalRepInfo *dbinfo)
 	 * Since these parameters are not a requirement for physical replication,
 	 * we should check it to make sure it won't fail.
 	 *
-	 * - wal_level = logical
-	 * - max_replication_slots >= current + number of dbs to be converted
-	 * - max_wal_senders >= current + number of dbs to be converted
-	 *
+	 * wal_level = logical
+	 * max_replication_slots >= current + number of dbs to be converted
+	 * max_wal_senders >= current + number of dbs to be converted
 	 */
 	conn = connect_database(dbinfo[0].pubconninfo);
 	if (conn == NULL)
@@ -651,7 +650,7 @@ setup_publisher(LogicalRepInfo *dbinfo)
 		{
 			pg_log_error("could not obtain replication slot information: got %d rows, expected %d row",
 						 PQntuples(res), 1);
-			pg_free(primary_slot_name);		/* it is not being used. */
+			pg_free(primary_slot_name); /* it is not being used. */
 			primary_slot_name = NULL;
 			return false;
 		}
@@ -775,9 +774,9 @@ setup_subscriber(LogicalRepInfo *dbinfo)
 	 * Since these parameters are not a requirement for physical replication,
 	 * we should check it to make sure it won't fail.
 	 *
-	 * - max_replication_slots >= number of dbs to be converted
-	 * - max_logical_replication_workers >= number of dbs to be converted
-	 * - max_worker_processes >= 1 + number of dbs to be converted
+	 * max_replication_slots >= number of dbs to be converted
+	 * max_logical_replication_workers >= number of dbs to be converted
+	 * max_worker_processes >= 1 + number of dbs to be converted
 	 */
 	conn = connect_database(dbinfo[0].subconninfo);
 	if (conn == NULL)
@@ -1628,10 +1627,10 @@ main(int argc, char **argv)
 
 		/*
 		 * Check if the primary server is ready for logical replication and
-		 * create the required objects for each database on publisher.
-		 * This step is here mainly because if we stop the standby we cannot
-		 * verify if the primary slot is in use. We could use an extra
-		 * connection for it but it doesn't seem worth.
+		 * create the required objects for each database on publisher. This
+		 * step is here mainly because if we stop the standby we cannot verify
+		 * if the primary slot is in use. We could use an extra connection for
+		 * it but it doesn't seem worth.
 		 */
 		if (!setup_publisher(dbinfo))
 			exit(1);
