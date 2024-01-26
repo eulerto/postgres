@@ -1446,8 +1446,6 @@ main(int argc, char **argv)
 		}
 	}
 
-	atexit(cleanup_objects_atexit);
-
 	/*
 	 * Don't allow it to be run as root. It uses pg_ctl which does not allow
 	 * it either.
@@ -1592,6 +1590,9 @@ main(int argc, char **argv)
 
 	/* Store database information for publisher and subscriber. */
 	dbinfo = store_pub_sub_info(pub_base_conninfo, sub_base_conninfo);
+
+	/* Register a function to clean up objects in case of failure. */
+	atexit(cleanup_objects_atexit);
 
 	/*
 	 * Check if the subscriber data directory has the same system identifier
