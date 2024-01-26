@@ -115,7 +115,7 @@ PostgreSQL documentation
 
      <varlistentry>
        <term><option>-t <replaceable class="parameter">seconds</replaceable></option></term>
-       <term><option>--timeout=<replaceable class="parameter">seconds</replaceable></option></term>
+       <term><option>--recovery-timeout=<replaceable class="parameter">seconds</replaceable></option></term>
        <listitem>
        <para>
         The maximum number of seconds to wait for recovery to end. Setting to 0
