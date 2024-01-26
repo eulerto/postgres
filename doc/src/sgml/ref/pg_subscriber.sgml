@@ -131,7 +131,9 @@ PostgreSQL documentation
        <para>
         Enables verbose mode. This will cause
         <application>pg_subscriber</application> to output progress messages
-        and detailed information about each step.
+        and detailed information about each step to standard error.
+        Repeating the option causes additional debug-level messages to appear on
+        standard error.
        </para>
       </listitem>
      </varlistentry>
