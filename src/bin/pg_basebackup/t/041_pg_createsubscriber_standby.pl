@@ -51,10 +51,10 @@ $node_s->start;
 $node_p->safe_psql('pg1', "INSERT INTO tbl1 VALUES('second row')");
 $node_p->wait_for_replay_catchup($node_s);
 
-# Run pg_subscriber on about-to-fail node F
+# Run pg_createsubscriber on about-to-fail node F
 command_fails(
 	[
-		'pg_subscriber', '--verbose',
+		'pg_createsubscriber', '--verbose',
 		'--pgdata', $node_f->data_dir,
 		'--publisher-conninfo', $node_p->connstr('pg1'),
 		'--subscriber-conninfo', $node_f->connstr('pg1'),
@@ -66,14 +66,14 @@ command_fails(
 # dry run mode on node S
 command_ok(
 	[
-		'pg_subscriber', '--verbose', '--dry-run',
+		'pg_createsubscriber', '--verbose', '--dry-run',
 		'--pgdata', $node_s->data_dir,
 		'--publisher-conninfo', $node_p->connstr('pg1'),
 		'--subscriber-conninfo', $node_s->connstr('pg1'),
 		'--database', 'pg1',
 		'--database', 'pg2'
 	],
-	'run pg_subscriber --dry-run on node S');
+	'run pg_createsubscriber --dry-run on node S');
 
 # PID sets to undefined because subscriber was stopped behind the scenes.
 # Start subscriber
@@ -83,17 +83,17 @@ $node_s->start;
 is($node_s->safe_psql('postgres', 'SELECT pg_is_in_recovery()'),
 	't', 'standby is in recovery');
 
-# Run pg_subscriber on node S
+# Run pg_createsubscriber on node S
 command_ok(
 	[
-		'pg_subscriber', '--verbose',
+		'pg_createsubscriber', '--verbose',
 		'--pgdata', $node_s->data_dir,
 		'--publisher-conninfo', $node_p->connstr('pg1'),
 		'--subscriber-conninfo', $node_s->connstr('pg1'),
 		'--database', 'pg1',
 		'--database', 'pg2'
 	],
-	'run pg_subscriber on node S');
+	'run pg_createsubscriber on node S');
 
 # Insert rows on P
 $node_p->safe_psql('pg1', "INSERT INTO tbl1 VALUES('third row')");
@@ -107,7 +107,7 @@ $node_s->start;
 # Get subscription names
 $result = $node_s->safe_psql(
 	'postgres', qq(
-	SELECT subname FROM pg_subscription WHERE subname ~ '^pg_subscriber_'
+	SELECT subname FROM pg_subscription WHERE subname ~ '^pg_createsubscriber_'
 ));
 my @subnames = split("\n", $result);
 

@@ -1,27 +1,27 @@
 <!--
-doc/src/sgml/ref/pg_subscriber.sgml
+doc/src/sgml/ref/pg_createsubscriber.sgml
 PostgreSQL documentation
 -->
 
-<refentry id="app-pgsubscriber">
- <indexterm zone="app-pgsubscriber">
-  <primary>pg_subscriber</primary>
+<refentry id="app-pgcreatesubscriber">
+ <indexterm zone="app-pgcreatesubscriber">
+  <primary>pg_createsubscriber</primary>
  </indexterm>
 
  <refmeta>
-  <refentrytitle><application>pg_subscriber</application></refentrytitle>
+  <refentrytitle><application>pg_createsubscriber</application></refentrytitle>
   <manvolnum>1</manvolnum>
   <refmiscinfo>Application</refmiscinfo>
  </refmeta>
 
  <refnamediv>
-  <refname>pg_subscriber</refname>
+  <refname>pg_createsubscriber</refname>
   <refpurpose>convert a physical replica into a new logical replica</refpurpose>
  </refnamediv>
 
  <refsynopsisdiv>
   <cmdsynopsis>
-   <command>pg_subscriber</command>
+   <command>pg_createsubscriber</command>
    <arg rep="repeat"><replaceable>option</replaceable></arg>
   </cmdsynopsis>
  </refsynopsisdiv>
@@ -29,14 +29,14 @@ PostgreSQL documentation
  <refsect1>
   <title>Description</title>
   <para>
-   <application>pg_subscriber</application> takes the publisher and subscriber
+   <application>pg_createsubscriber</application> takes the publisher and subscriber
    connection strings, a cluster directory from a physical replica and a list of
    database names and it sets up a new logical replica using the physical
    recovery process.
   </para>
 
   <para>
-   The <application>pg_subscriber</application> should be run at the target
+   The <application>pg_createsubscriber</application> should be run at the target
    server. The source server (known as publisher server) should accept logical
    replication connections from the target server (known as subscriber server).
    The target server should accept local logical replication connection.
@@ -47,7 +47,7 @@ PostgreSQL documentation
   <title>Options</title>
 
    <para>
-    <application>pg_subscriber</application> accepts the following
+    <application>pg_createsubscriber</application> accepts the following
     command-line arguments:
 
     <variablelist>
@@ -130,7 +130,7 @@ PostgreSQL documentation
       <listitem>
        <para>
         Enables verbose mode. This will cause
-        <application>pg_subscriber</application> to output progress messages
+        <application>pg_createsubscriber</application> to output progress messages
         and detailed information about each step to standard error.
         Repeating the option causes additional debug-level messages to appear on
         standard error.
@@ -149,7 +149,7 @@ PostgreSQL documentation
        <term><option>--version</option></term>
        <listitem>
        <para>
-       Print the <application>pg_subscriber</application> version and exit.
+       Print the <application>pg_createsubscriber</application> version and exit.
        </para>
        </listitem>
      </varlistentry>
@@ -159,7 +159,7 @@ PostgreSQL documentation
        <term><option>--help</option></term>
        <listitem>
        <para>
-       Show help about <application>pg_subscriber</application> command
+       Show help about <application>pg_createsubscriber</application> command
        line arguments, and exit.
        </para>
        </listitem>
@@ -180,18 +180,18 @@ PostgreSQL documentation
   <procedure>
    <step>
     <para>
-     <application>pg_subscriber</application> checks if the given target data
+     <application>pg_createsubscriber</application> checks if the given target data
      directory has the same system identifier than the source data directory.
      Since it uses the recovery process as one of the steps, it starts the
      target server as a replica from the source server. If the system
-     identifier is not the same, <application>pg_subscriber</application> will
+     identifier is not the same, <application>pg_createsubscriber</application> will
      terminate with an error.
     </para>
    </step>
 
    <step>
     <para>
-     <application>pg_subscriber</application> checks if the target data
+     <application>pg_createsubscriber</application> checks if the target data
      directory is used by a physical replica. Stop the physical replica if it is
      running. One of the next steps is to add some recovery parameters that
      requires a server start. This step avoids an error.
@@ -200,9 +200,9 @@ PostgreSQL documentation
 
    <step>
     <para>
-     <application>pg_subscriber</application> creates one replication slot for
+     <application>pg_createsubscriber</application> creates one replication slot for
      each specified database on the source server. The replication slot name
-     contains a <literal>pg_subscriber</literal> prefix. These replication
+     contains a <literal>pg_createsubscriber</literal> prefix. These replication
      slots will be used by the subscriptions in a future step.  Another
      replication slot is used to get a consistent start location. This
      consistent LSN will be used as a stopping point in the <xref
@@ -214,7 +214,7 @@ PostgreSQL documentation
 
    <step>
     <para>
-     <application>pg_subscriber</application> writes recovery parameters into
+     <application>pg_createsubscriber</application> writes recovery parameters into
      the target data directory and start the target server. It specifies a LSN
      (consistent LSN that was obtained in the previous step) of write-ahead
      log location up to which recovery will proceed. It also specifies
@@ -226,19 +226,19 @@ PostgreSQL documentation
 
    <step>
     <para>
-     Next, <application>pg_subscriber</application> creates one publication
+     Next, <application>pg_createsubscriber</application> creates one publication
      for each specified database on the source server. Each publication
      replicates changes for all tables in the database. The publication name
-     contains a <literal>pg_subscriber</literal> prefix. These publication
+     contains a <literal>pg_createsubscriber</literal> prefix. These publication
      will be used by a corresponding subscription in a next step.
     </para>
    </step>
 
    <step>
     <para>
-     <application>pg_subscriber</application> creates one subscription for
+     <application>pg_createsubscriber</application> creates one subscription for
      each specified database on the target server. Each subscription name
-     contains a <literal>pg_subscriber</literal> prefix. The replication slot
+     contains a <literal>pg_createsubscriber</literal> prefix. The replication slot
      name is identical to the subscription name. It does not copy existing data
      from the source server. It does not create a replication slot. Instead, it
      uses the replication slot that was created in a previous step. The
@@ -251,7 +251,7 @@ PostgreSQL documentation
 
    <step>
     <para>
-     <application>pg_subscriber</application> sets the replication progress to
+     <application>pg_createsubscriber</application> sets the replication progress to
      the consistent LSN that was obtained in a previous step. When the target
      server started the recovery process, it caught up to the consistent LSN.
      This is the exact LSN to be used as a initial location for each
@@ -261,7 +261,7 @@ PostgreSQL documentation
 
    <step>
     <para>
-     Finally, <application>pg_subscriber</application> enables the subscription
+     Finally, <application>pg_createsubscriber</application> enables the subscription
      for each specified database on the target server. The subscription starts
      streaming from the consistent LSN.
     </para>
@@ -269,14 +269,14 @@ PostgreSQL documentation
 
    <step>
     <para>
-     <application>pg_subscriber</application> removes the additional replication
+     <application>pg_createsubscriber</application> removes the additional replication
      slot that was used to get the consistent LSN on the source server.
     </para>
    </step>
 
    <step>
     <para>
-     <application>pg_subscriber</application> stops the target server to change
+     <application>pg_createsubscriber</application> stops the target server to change
      its system identifier.
     </para>
    </step>
@@ -290,7 +290,7 @@ PostgreSQL documentation
    To create a logical replica for databases <literal>hr</literal> and
    <literal>finance</literal> from a physical replica at <literal>foo</literal>:
 <screen>
-<prompt>$</prompt> <userinput>pg_subscriber -D /usr/local/pgsql/data -P "host=foo" -S "host=localhost" -d hr -d finance</userinput>
+<prompt>$</prompt> <userinput>pg_createsubscriber -D /usr/local/pgsql/data -P "host=foo" -S "host=localhost" -d hr -d finance</userinput>
 </screen>
   </para>
 

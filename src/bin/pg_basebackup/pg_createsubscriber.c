@@ -1,12 +1,12 @@
 /*-------------------------------------------------------------------------
  *
- * pg_subscriber.c
+ * pg_createsubscriber.c
  *	  Create a new logical replica from a standby server
  *
  * Copyright (C) 2024, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
- *		src/bin/pg_basebackup/pg_subscriber.c
+ *		src/bin/pg_basebackup/pg_createsubscriber.c
  *
  *-------------------------------------------------------------------------
  */
@@ -30,7 +30,7 @@
 #include "getopt_long.h"
 #include "utils/pidfile.h"
 
-#define	PGS_OUTPUT_DIR	"pg_subscriber_output.d"
+#define	PGS_OUTPUT_DIR	"pg_createsubscriber_output.d"
 
 typedef struct LogicalRepInfo
 {
@@ -113,7 +113,7 @@ enum WaitPMResult
 
 
 /*
- * Cleanup objects that were created by pg_subscriber if there is an error.
+ * Cleanup objects that were created by pg_createsubscriber if there is an error.
  *
  * Replication slots, publications and subscriptions are created. Depending on
  * the step it failed, it should remove the already created objects if it is
@@ -609,10 +609,10 @@ setup_publisher(LogicalRepInfo *dbinfo)
 
 		/*
 		 * Build the publication name. The name must not exceed NAMEDATALEN -
-		 * 1. This current schema uses a maximum of 35 characters (14 + 10 +
+		 * 1. This current schema uses a maximum of 31 characters (20 + 10 +
 		 * '\0').
 		 */
-		snprintf(pubname, sizeof(pubname), "pg_subscriber_%u", dbinfo[i].oid);
+		snprintf(pubname, sizeof(pubname), "pg_createsubscriber_%u", dbinfo[i].oid);
 		dbinfo[i].pubname = pg_strdup(pubname);
 
 		/*
@@ -625,13 +625,13 @@ setup_publisher(LogicalRepInfo *dbinfo)
 
 		/*
 		 * Build the replication slot name. The name must not exceed
-		 * NAMEDATALEN - 1. This current schema uses a maximum of 36
-		 * characters (14 + 10 + 1 + 10 + '\0'). System identifier is included
-		 * to reduce the probability of collision. By default, subscription
-		 * name is used as replication slot name.
+		 * NAMEDATALEN - 1. This current schema uses a maximum of 42 characters
+		 * (20 + 10 + 1 + 10 + '\0'). PID is included to reduce the probability
+		 * of collision. By default, subscription name is used as replication
+		 * slot name.
 		 */
 		snprintf(replslotname, sizeof(replslotname),
-				 "pg_subscriber_%u_%d",
+				 "pg_createsubscriber_%u_%d",
 				 dbinfo[i].oid,
 				 (int) getpid());
 		dbinfo[i].subname = pg_strdup(replslotname);
@@ -868,7 +868,7 @@ create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
 	 */
 	if (slot_name[0] == '\0')
 	{
-		snprintf(slot_name, NAMEDATALEN, "pg_subscriber_%d_startpoint",
+		snprintf(slot_name, NAMEDATALEN, "pg_createsubscriber_%d_startpoint",
 				 (int) getpid());
 		transient_replslot = true;
 	}
@@ -1087,7 +1087,7 @@ create_publication(PGconn *conn, LogicalRepInfo *dbinfo)
 	{
 		/*
 		 * If publication name already exists and puballtables is true, let's
-		 * use it. A previous run of pg_subscriber must have created this
+		 * use it. A previous run of pg_createsubscriber must have created this
 		 * publication. Bail out.
 		 */
 		if (strcmp(PQgetvalue(res, 0, 0), "t") == 0)
@@ -1101,7 +1101,7 @@ create_publication(PGconn *conn, LogicalRepInfo *dbinfo)
 			 * Unfortunately, if it reaches this code path, it will always
 			 * fail (unless you decide to change the existing publication
 			 * name). That's bad but it is very unlikely that the user will
-			 * choose a name with pg_subscriber_ prefix followed by the exact
+			 * choose a name with pg_createsubscriber_ prefix followed by the exact
 			 * database oid in which puballtables is false.
 			 */
 			pg_log_error("publication \"%s\" does not replicate changes for all tables",
@@ -1429,7 +1429,7 @@ main(int argc, char **argv)
 	pg_logging_init(argv[0]);
 	pg_logging_set_level(PG_LOG_WARNING);
 	progname = get_progname(argv[0]);
-	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pg_subscriber"));
+	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pg_createsubscriber"));
 
 	if (argc > 1)
 	{
@@ -1441,7 +1441,7 @@ main(int argc, char **argv)
 		else if (strcmp(argv[1], "-V") == 0
 				 || strcmp(argv[1], "--version") == 0)
 		{
-			puts("pg_subscriber (PostgreSQL) " PG_VERSION);
+			puts("pg_createsubscriber (PostgreSQL) " PG_VERSION);
 			exit(0);
 		}
 	}
