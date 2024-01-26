@@ -62,7 +62,9 @@ static void disconnect_database(PGconn *conn);
 static uint64 get_sysid_from_conn(const char *conninfo);
 static uint64 get_control_from_datadir(const char *datadir);
 static void modify_sysid(const char *pg_resetwal_path, const char *datadir);
+static bool check_publisher(LogicalRepInfo *dbinfo);
 static bool setup_publisher(LogicalRepInfo *dbinfo);
+static bool check_subscriber(LogicalRepInfo *dbinfo);
 static char *create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
 											 char *slot_name);
 static void drop_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo, const char *slot_name);
@@ -567,11 +569,90 @@ modify_sysid(const char *pg_resetwal_path, const char *datadir)
 }
 
 /*
- * Is the source server ready for logical replication? If so, create the
- * publications and replication slots in preparation for logical replication.
+ * Create the publications and replication slots in preparation for logical
+ * replication.
  */
 static bool
 setup_publisher(LogicalRepInfo *dbinfo)
+{
+	PGconn	   *conn;
+	PGresult   *res;
+
+	for (int i = 0; i < num_dbs; i++)
+	{
+		char		pubname[NAMEDATALEN];
+		char		replslotname[NAMEDATALEN];
+
+		conn = connect_database(dbinfo[i].pubconninfo);
+		if (conn == NULL)
+			exit(1);
+
+		res = PQexec(conn,
+					 "SELECT oid FROM pg_catalog.pg_database WHERE datname = current_database()");
+		if (PQresultStatus(res) != PGRES_TUPLES_OK)
+		{
+			pg_log_error("could not obtain database OID: %s", PQresultErrorMessage(res));
+			return false;
+		}
+
+		if (PQntuples(res) != 1)
+		{
+			pg_log_error("could not obtain database OID: got %d rows, expected %d rows",
+						 PQntuples(res), 1);
+			return false;
+		}
+
+		/* Remember database OID. */
+		dbinfo[i].oid = strtoul(PQgetvalue(res, 0, 0), NULL, 10);
+
+		PQclear(res);
+
+		/*
+		 * Build the publication name. The name must not exceed NAMEDATALEN -
+		 * 1. This current schema uses a maximum of 35 characters (14 + 10 +
+		 * '\0').
+		 */
+		snprintf(pubname, sizeof(pubname), "pg_subscriber_%u", dbinfo[i].oid);
+		dbinfo[i].pubname = pg_strdup(pubname);
+
+		/*
+		 * Create publication on publisher. This step should be executed
+		 * *before* promoting the subscriber to avoid any transactions between
+		 * consistent LSN and the new publication rows (such transactions
+		 * wouldn't see the new publication rows resulting in an error).
+		 */
+		create_publication(conn, &dbinfo[i]);
+
+		/*
+		 * Build the replication slot name. The name must not exceed
+		 * NAMEDATALEN - 1. This current schema uses a maximum of 36
+		 * characters (14 + 10 + 1 + 10 + '\0'). System identifier is included
+		 * to reduce the probability of collision. By default, subscription
+		 * name is used as replication slot name.
+		 */
+		snprintf(replslotname, sizeof(replslotname),
+				 "pg_subscriber_%u_%d",
+				 dbinfo[i].oid,
+				 (int) getpid());
+		dbinfo[i].subname = pg_strdup(replslotname);
+
+		/* Create replication slot on publisher. */
+		if (create_logical_replication_slot(conn, &dbinfo[i], replslotname) != NULL || dry_run)
+			pg_log_info("create replication slot \"%s\" on publisher", replslotname);
+		else
+			return false;
+
+		disconnect_database(conn);
+	}
+
+	return true;
+}
+
+/*
+ * Is the primary server ready for logical replication?
+ */
+static bool
+check_publisher(LogicalRepInfo *dbinfo)
 {
 	PGconn	   *conn;
 	PGresult   *res;
@@ -684,81 +765,14 @@ setup_publisher(LogicalRepInfo *dbinfo)
 		return false;
 	}
 
-	for (int i = 0; i < num_dbs; i++)
-	{
-		char		pubname[NAMEDATALEN];
-		char		replslotname[NAMEDATALEN];
-
-		conn = connect_database(dbinfo[i].pubconninfo);
-		if (conn == NULL)
-			exit(1);
-
-		res = PQexec(conn,
-					 "SELECT oid FROM pg_catalog.pg_database WHERE datname = current_database()");
-		if (PQresultStatus(res) != PGRES_TUPLES_OK)
-		{
-			pg_log_error("could not obtain database OID: %s", PQresultErrorMessage(res));
-			return false;
-		}
-
-		if (PQntuples(res) != 1)
-		{
-			pg_log_error("could not obtain database OID: got %d rows, expected %d rows",
-						 PQntuples(res), 1);
-			return false;
-		}
-
-		/* Remember database OID. */
-		dbinfo[i].oid = strtoul(PQgetvalue(res, 0, 0), NULL, 10);
-
-		PQclear(res);
-
-		/*
-		 * Build the publication name. The name must not exceed NAMEDATALEN -
-		 * 1. This current schema uses a maximum of 35 characters (14 + 10 +
-		 * '\0').
-		 */
-		snprintf(pubname, sizeof(pubname), "pg_subscriber_%u", dbinfo[i].oid);
-		dbinfo[i].pubname = pg_strdup(pubname);
-
-		/*
-		 * Create publication on publisher. This step should be executed
-		 * *before* promoting the subscriber to avoid any transactions between
-		 * consistent LSN and the new publication rows (such transactions
-		 * wouldn't see the new publication rows resulting in an error).
-		 */
-		create_publication(conn, &dbinfo[i]);
-
-		/*
-		 * Build the replication slot name. The name must not exceed
-		 * NAMEDATALEN - 1. This current schema uses a maximum of 36
-		 * characters (14 + 10 + 1 + 10 + '\0'). System identifier is included
-		 * to reduce the probability of collision. By default, subscription
-		 * name is used as replication slot name.
-		 */
-		snprintf(replslotname, sizeof(replslotname),
-				 "pg_subscriber_%u_%d",
-				 dbinfo[i].oid,
-				 (int) getpid());
-		dbinfo[i].subname = pg_strdup(replslotname);
-
-		/* Create replication slot on publisher. */
-		if (create_logical_replication_slot(conn, &dbinfo[i], replslotname) != NULL || dry_run)
-			pg_log_info("create replication slot \"%s\" on publisher", replslotname);
-		else
-			return false;
-
-		disconnect_database(conn);
-	}
-
 	return true;
 }
 
 /*
- * Is the target server ready for logical replication?
+ * Is the standby server ready for logical replication?
  */
 static bool
-setup_subscriber(LogicalRepInfo *dbinfo)
+check_subscriber(LogicalRepInfo *dbinfo)
 {
 	PGconn	   *conn;
 	PGresult   *res;
@@ -1622,12 +1636,20 @@ main(int argc, char **argv)
 		/*
 		 * Check if the standby server is ready for logical replication.
 		 */
-		if (!setup_subscriber(dbinfo))
+		if (!check_subscriber(dbinfo))
 			exit(1);
 
 		/*
-		 * Check if the primary server is ready for logical replication and
-		 * create the required objects for each database on publisher. This
+		 * Check if the primary server is ready for logical replication. This
+		 * routine checks if a replication slot is in use on primary so it
+		 * relies on check_subscriber() to obtain the primary_slot_name. That's
+		 * why it is called after it.
+		 */
+		if (!check_publisher(dbinfo))
+			exit(1);
+
+		/*
+		 * Create the required objects for each database on publisher. This
 		 * step is here mainly because if we stop the standby we cannot verify
 		 * if the primary slot is in use. We could use an extra connection for
 		 * it but it doesn't seem worth.
