@@ -23,6 +23,28 @@ PostgreSQL documentation
   <cmdsynopsis>
    <command>pg_createsubscriber</command>
    <arg rep="repeat"><replaceable>option</replaceable></arg>
+   <group choice="plain">
+    <group choice="req">
+     <arg choice="plain"><option>-D</option> </arg>
+     <arg choice="plain"><option>--pgdata</option></arg>
+    </group>
+    <replaceable>datadir</replaceable>
+    <group choice="req">
+     <arg choice="plain"><option>-P</option></arg>
+     <arg choice="plain"><option>--publisher-conninfo</option></arg>
+    </group>
+    <replaceable>conninfo</replaceable>
+    <group choice="req">
+     <arg choice="plain"><option>-S</option></arg>
+     <arg choice="plain"><option>--subscriber-conninfo</option></arg>
+    </group>
+    <replaceable>conninfo</replaceable>
+    <group choice="req">
+     <arg choice="plain"><option>-d</option></arg>
+     <arg choice="plain"><option>--database</option></arg>
+    </group>
+    <replaceable>dbname</replaceable>
+   </group>
   </cmdsynopsis>
  </refsynopsisdiv>
 
