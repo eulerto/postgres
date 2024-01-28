@@ -174,8 +174,8 @@ usage(void)
 	printf(_("  %s [OPTION]...\n"), progname);
 	printf(_("\nOptions:\n"));
 	printf(_(" -D, --pgdata=DATADIR                location for the subscriber data directory\n"));
-	printf(_(" -P, --publisher-conninfo=CONNINFO   publisher connection string\n"));
-	printf(_(" -S, --subscriber-conninfo=CONNINFO  subscriber connection string\n"));
+	printf(_(" -P, --publisher-server=CONNSTR      publisher connection string\n"));
+	printf(_(" -S, --subscriber-server=CONNSTR     subscriber connection string\n"));
 	printf(_(" -d, --database=DBNAME               database to create a subscription\n"));
 	printf(_(" -n, --dry-run                       stop before modifying anything\n"));
 	printf(_(" -t, --recovery-timeout=SECS         seconds to wait for recovery to end\n"));
@@ -1385,8 +1385,8 @@ main(int argc, char **argv)
 		{"help", no_argument, NULL, '?'},
 		{"version", no_argument, NULL, 'V'},
 		{"pgdata", required_argument, NULL, 'D'},
-		{"publisher-conninfo", required_argument, NULL, 'P'},
-		{"subscriber-conninfo", required_argument, NULL, 'S'},
+		{"publisher-server", required_argument, NULL, 'P'},
+		{"subscriber-server", required_argument, NULL, 'S'},
 		{"database", required_argument, NULL, 'd'},
 		{"dry-run", no_argument, NULL, 'n'},
 		{"recovery-timeout", required_argument, NULL, 't'},

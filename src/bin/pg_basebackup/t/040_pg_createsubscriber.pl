@@ -28,7 +28,7 @@ command_fails(
 		'pg_createsubscriber',
 		'--dry-run',
 		'--pgdata', $datadir,
-		'--publisher-conninfo', 'dbname=postgres'
+		'--publisher-server', 'dbname=postgres'
 	],
 	'no subscriber connection string specified');
 command_fails(
@@ -36,8 +36,8 @@ command_fails(
 		'pg_createsubscriber',
 		'--verbose',
 		'--pgdata', $datadir,
-		'--publisher-conninfo', 'dbname=postgres',
-		'--subscriber-conninfo', 'dbname=postgres'
+		'--publisher-server', 'dbname=postgres',
+		'--subscriber-server', 'dbname=postgres'
 	],
 	'no database name specified');
 

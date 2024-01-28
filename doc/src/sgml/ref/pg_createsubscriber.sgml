@@ -31,14 +31,14 @@ PostgreSQL documentation
     <replaceable>datadir</replaceable>
     <group choice="req">
      <arg choice="plain"><option>-P</option></arg>
-     <arg choice="plain"><option>--publisher-conninfo</option></arg>
+     <arg choice="plain"><option>--publisher-server</option></arg>
     </group>
-    <replaceable>conninfo</replaceable>
+    <replaceable>connstr</replaceable>
     <group choice="req">
      <arg choice="plain"><option>-S</option></arg>
-     <arg choice="plain"><option>--subscriber-conninfo</option></arg>
+     <arg choice="plain"><option>--subscriber-server</option></arg>
     </group>
-    <replaceable>conninfo</replaceable>
+    <replaceable>connstr</replaceable>
     <group choice="req">
      <arg choice="plain"><option>-d</option></arg>
      <arg choice="plain"><option>--database</option></arg>
@@ -85,8 +85,8 @@ PostgreSQL documentation
      </varlistentry>
 
      <varlistentry>
-      <term><option>-P  <replaceable class="parameter">conninfo</replaceable></option></term>
-      <term><option>--publisher-conninfo=<replaceable class="parameter">conninfo</replaceable></option></term>
+      <term><option>-P  <replaceable class="parameter">connstr</replaceable></option></term>
+      <term><option>--publisher-server=<replaceable class="parameter">connstr</replaceable></option></term>
       <listitem>
        <para>
         The connection string to the publisher. For details see <xref linkend="libpq-connstring"/>.
@@ -95,8 +95,8 @@ PostgreSQL documentation
      </varlistentry>
 
      <varlistentry>
-      <term><option>-S <replaceable class="parameter">conninfo</replaceable></option></term>
-      <term><option>--subscriber-conninfo=<replaceable class="parameter">conninfo</replaceable></option></term>
+      <term><option>-S <replaceable class="parameter">connstr</replaceable></option></term>
+      <term><option>--subscriber-server=<replaceable class="parameter">connstr</replaceable></option></term>
       <listitem>
        <para>
         The connection string to the subscriber. For details see <xref linkend="libpq-connstring"/>.

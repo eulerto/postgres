@@ -56,8 +56,8 @@ command_fails(
 	[
 		'pg_createsubscriber', '--verbose',
 		'--pgdata', $node_f->data_dir,
-		'--publisher-conninfo', $node_p->connstr('pg1'),
-		'--subscriber-conninfo', $node_f->connstr('pg1'),
+		'--publisher-server', $node_p->connstr('pg1'),
+		'--subscriber-server', $node_f->connstr('pg1'),
 		'--database', 'pg1',
 		'--database', 'pg2'
 	],
@@ -68,8 +68,8 @@ command_ok(
 	[
 		'pg_createsubscriber', '--verbose', '--dry-run',
 		'--pgdata', $node_s->data_dir,
-		'--publisher-conninfo', $node_p->connstr('pg1'),
-		'--subscriber-conninfo', $node_s->connstr('pg1'),
+		'--publisher-server', $node_p->connstr('pg1'),
+		'--subscriber-server', $node_s->connstr('pg1'),
 		'--database', 'pg1',
 		'--database', 'pg2'
 	],
@@ -88,8 +88,8 @@ command_ok(
 	[
 		'pg_createsubscriber', '--verbose',
 		'--pgdata', $node_s->data_dir,
-		'--publisher-conninfo', $node_p->connstr('pg1'),
-		'--subscriber-conninfo', $node_s->connstr('pg1'),
+		'--publisher-server', $node_p->connstr('pg1'),
+		'--subscriber-server', $node_s->connstr('pg1'),
 		'--database', 'pg1',
 		'--database', 'pg2'
 	],
