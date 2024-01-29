@@ -69,6 +69,8 @@ static bool setup_subscriber(LogicalRepInfo *dbinfo, const char *consistent_lsn)
 static char *create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
 											 char *slot_name);
 static void drop_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo, const char *slot_name);
+static char *server_logfile_name(const char *datadir);
+static void start_standby_server(const char *pg_ctl_path, const char *datadir, const char *logfile);
 static void stop_standby_server(const char *pg_ctl_path, const char *datadir);
 static void pg_ctl_status(const char *pg_ctl_cmd, int rc, int action);
 static void wait_for_end_recovery(const char *conninfo);
@@ -963,6 +965,44 @@ drop_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo, const char *slot_nam
 	destroyPQExpBuffer(str);
 }
 
+static char *
+server_logfile_name(const char *datadir)
+{
+	char		timebuf[128];
+	struct timeval time;
+	time_t		tt;
+	int			len;
+	char	   *filename;
+
+	/* append timestamp with ISO 8601 format. */
+	gettimeofday(&time, NULL);
+	tt = (time_t) time.tv_sec;
+	strftime(timebuf, sizeof(timebuf), "%Y%m%dT%H%M%S", localtime(&tt));
+	snprintf(timebuf + strlen(timebuf), sizeof(timebuf) - strlen(timebuf),
+			 ".%03d", (int) (time.tv_usec / 1000));
+
+	filename = (char *) pg_malloc0(MAXPGPATH);
+	len = snprintf(filename, MAXPGPATH, "%s/%s/server_start_%s.log", datadir, PGS_OUTPUT_DIR, timebuf);
+	if (len >= MAXPGPATH)
+	{
+		pg_log_error("log file path is too long");
+		exit(1);
+	}
+
+	return filename;
+}
+
+static void
+start_standby_server(const char *pg_ctl_path, const char *datadir, const char *logfile)
+{
+	char   *pg_ctl_cmd;
+	int		rc;
+
+	pg_ctl_cmd = psprintf("\"%s\" start -D \"%s\" -s -l \"%s\"", pg_ctl_path, datadir, logfile);
+	rc = system(pg_ctl_cmd);
+	pg_ctl_status(pg_ctl_cmd, rc, 1);
+}
+
 static void
 stop_standby_server(const char *pg_ctl_path, const char *datadir)
 {
@@ -1429,16 +1469,9 @@ main(int argc, char **argv)
 
 	int			c;
 	int			option_index;
-	int			rc;
-
-	char	   *pg_ctl_cmd;
 
 	char	   *base_dir;
 	char	   *server_start_log;
-
-	char		timebuf[128];
-	struct timeval time;
-	time_t		tt;
 	int			len;
 
 	char	   *pub_base_conninfo = NULL;
@@ -1654,6 +1687,8 @@ main(int argc, char **argv)
 		exit(1);
 	}
 
+	server_start_log = server_logfile_name(subscriber_dir);
+
 	/* subscriber PID file. */
 	snprintf(pidfile, MAXPGPATH, "%s/postmaster.pid", subscriber_dir);
 
@@ -1753,25 +1788,7 @@ main(int argc, char **argv)
 	 * Start subscriber and wait until accepting connections.
 	 */
 	pg_log_info("starting the subscriber");
-
-	/* append timestamp with ISO 8601 format. */
-	gettimeofday(&time, NULL);
-	tt = (time_t) time.tv_sec;
-	strftime(timebuf, sizeof(timebuf), "%Y%m%dT%H%M%S", localtime(&tt));
-	snprintf(timebuf + strlen(timebuf), sizeof(timebuf) - strlen(timebuf),
-			 ".%03d", (int) (time.tv_usec / 1000));
-
-	server_start_log = (char *) pg_malloc0(MAXPGPATH);
-	len = snprintf(server_start_log, MAXPGPATH, "%s/%s/server_start_%s.log", subscriber_dir, PGS_OUTPUT_DIR, timebuf);
-	if (len >= MAXPGPATH)
-	{
-		pg_log_error("log file path is too long");
-		exit(1);
-	}
-
-	pg_ctl_cmd = psprintf("\"%s\" start -D \"%s\" -s -l \"%s\"", pg_ctl_path, subscriber_dir, server_start_log);
-	rc = system(pg_ctl_cmd);
-	pg_ctl_status(pg_ctl_cmd, rc, 1);
+	start_standby_server(pg_ctl_path, subscriber_dir, server_start_log);
 
 	/*
 	 * Waiting the subscriber to be promoted.
