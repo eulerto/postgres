@@ -69,6 +69,7 @@ static bool setup_subscriber(LogicalRepInfo *dbinfo, const char *consistent_lsn)
 static char *create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
 											 char *slot_name);
 static void drop_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo, const char *slot_name);
+static void stop_standby_server(const char *pg_ctl_path, const char *datadir);
 static void pg_ctl_status(const char *pg_ctl_cmd, int rc, int action);
 static void wait_for_end_recovery(const char *conninfo);
 static void create_publication(PGconn *conn, LogicalRepInfo *dbinfo);
@@ -962,6 +963,17 @@ drop_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo, const char *slot_nam
 	destroyPQExpBuffer(str);
 }
 
+static void
+stop_standby_server(const char *pg_ctl_path, const char *datadir)
+{
+	char   *pg_ctl_cmd;
+	int		rc;
+
+	pg_ctl_cmd = psprintf("\"%s\" stop -D \"%s\" -s", pg_ctl_path, datadir);
+	rc = system(pg_ctl_cmd);
+	pg_ctl_status(pg_ctl_cmd, rc, 0);
+}
+
 /*
  * Reports a suitable message if pg_ctl fails.
  */
@@ -1013,9 +1025,6 @@ wait_for_end_recovery(const char *conninfo)
 	int			status = POSTMASTER_STILL_STARTING;
 	int			timer = 0;
 
-	char	   *pg_ctl_cmd;
-	int			rc;
-
 	pg_log_info("waiting the postmaster to reach the consistent state");
 
 	conn = connect_database(conninfo);
@@ -1060,11 +1069,7 @@ wait_for_end_recovery(const char *conninfo)
 		if (recovery_timeout > 0 && timer >= recovery_timeout)
 		{
 			pg_log_error("recovery timed out");
-
-			pg_ctl_cmd = psprintf("\"%s\" stop -D \"%s\" -s", pg_ctl_path, subscriber_dir);
-			rc = system(pg_ctl_cmd);
-			pg_ctl_status(pg_ctl_cmd, rc, 0);
-
+			stop_standby_server(pg_ctl_path, subscriber_dir);
 			exit(1);
 		}
 
@@ -1684,12 +1689,10 @@ main(int argc, char **argv)
 		if (!setup_publisher(dbinfo))
 			exit(1);
 
+		/* Stop the standby server. */
 		pg_log_info("standby is up and running");
 		pg_log_info("stopping the server to start the transformation steps");
-
-		pg_ctl_cmd = psprintf("\"%s\" stop -D \"%s\" -s", pg_ctl_path, subscriber_dir);
-		rc = system(pg_ctl_cmd);
-		pg_ctl_status(pg_ctl_cmd, rc, 0);
+		stop_standby_server(pg_ctl_path, subscriber_dir);
 	}
 	else
 	{
@@ -1810,10 +1813,7 @@ main(int argc, char **argv)
 	 * Stop the subscriber.
 	 */
 	pg_log_info("stopping the subscriber");
-
-	pg_ctl_cmd = psprintf("\"%s\" stop -D \"%s\" -s", pg_ctl_path, subscriber_dir);
-	rc = system(pg_ctl_cmd);
-	pg_ctl_status(pg_ctl_cmd, rc, 0);
+	stop_standby_server(pg_ctl_path, subscriber_dir);
 
 	/*
 	 * Change system identifier.
