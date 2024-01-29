@@ -65,6 +65,7 @@ static void modify_sysid(const char *pg_resetwal_path, const char *datadir);
 static bool check_publisher(LogicalRepInfo *dbinfo);
 static bool setup_publisher(LogicalRepInfo *dbinfo);
 static bool check_subscriber(LogicalRepInfo *dbinfo);
+static bool setup_subscriber(LogicalRepInfo *dbinfo, const char *consistent_lsn);
 static char *create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
 											 char *slot_name);
 static void drop_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo, const char *slot_name);
@@ -834,6 +835,43 @@ check_subscriber(LogicalRepInfo *dbinfo)
 }
 
 /*
+ * Create the subscriptions, adjust the initial location for logical replication and
+ * enable the subscriptions. That's the last step for logical repliation setup.
+ */
+static bool
+setup_subscriber(LogicalRepInfo *dbinfo, const char *consistent_lsn)
+{
+	PGconn	   *conn;
+
+	for (int i = 0; i < num_dbs; i++)
+	{
+		/* Connect to subscriber. */
+		conn = connect_database(dbinfo[i].subconninfo);
+		if (conn == NULL)
+			exit(1);
+
+		/*
+		 * Since the publication was created before the consistent LSN, it is
+		 * available on the subscriber when the physical replica is promoted.
+		 * Remove publications from the subscriber because it has no use.
+		 */
+		drop_publication(conn, &dbinfo[i]);
+
+		create_subscription(conn, &dbinfo[i]);
+
+		/* Set the replication progress to the correct LSN. */
+		set_replication_progress(conn, &dbinfo[i], consistent_lsn);
+
+		/* Enable subscription. */
+		enable_subscription(conn, &dbinfo[i]);
+
+		disconnect_database(conn);
+	}
+
+	return true;
+}
+
+/*
  * Create a logical replication slot and returns a consistent LSN. The returned
  * LSN might be used to catch up the subscriber up to the required point.
  *
@@ -1414,8 +1452,6 @@ main(int argc, char **argv)
 
 	char		pidfile[MAXPGPATH];
 
-	int			i;
-
 	pg_logging_init(argv[0]);
 	pg_logging_set_level(PG_LOG_WARNING);
 	progname = get_progname(argv[0]);
@@ -1740,32 +1776,14 @@ main(int argc, char **argv)
 	wait_for_end_recovery(dbinfo[0].subconninfo);
 
 	/*
-	 * Create a subscription for each database.
+	 * Create the subscription for each database on subscriber. It does not
+	 * enable it immediately because it needs to adjust the logical replication
+	 * start point to the LSN reported by consistent_lsn (see
+	 * set_replication_progress). It also cleans up publications created by
+	 * this tool and replication to the standby.
 	 */
-	for (i = 0; i < num_dbs; i++)
-	{
-		/* Connect to subscriber. */
-		conn = connect_database(dbinfo[i].subconninfo);
-		if (conn == NULL)
-			exit(1);
-
-		/*
-		 * Since the publication was created before the consistent LSN, it is
-		 * available on the subscriber when the physical replica is promoted.
-		 * Remove publications from the subscriber because it has no use.
-		 */
-		drop_publication(conn, &dbinfo[i]);
-
-		create_subscription(conn, &dbinfo[i]);
-
-		/* Set the replication progress to the correct LSN. */
-		set_replication_progress(conn, &dbinfo[i], consistent_lsn);
-
-		/* Enable subscription. */
-		enable_subscription(conn, &dbinfo[i]);
-
-		disconnect_database(conn);
-	}
+	if (!setup_subscriber(dbinfo, consistent_lsn))
+		exit(1);
 
 	/*
 	 * If the primary_slot_name exists on primary, drop it.
