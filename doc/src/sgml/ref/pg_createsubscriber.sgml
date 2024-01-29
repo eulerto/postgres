@@ -225,7 +225,7 @@ PostgreSQL documentation
      <application>pg_createsubscriber</application> creates one replication slot for
      each specified database on the source server. The replication slot name
      contains a <literal>pg_createsubscriber</literal> prefix. These replication
-     slots will be used by the subscriptions in a future step.  Another
+     slots will be used by the subscriptions in a future step.  A temporary
      replication slot is used to get a consistent start location. This
      consistent LSN will be used as a stopping point in the <xref
      linkend="guc-recovery-target-lsn"/> parameter and by the
@@ -286,13 +286,6 @@ PostgreSQL documentation
      Finally, <application>pg_createsubscriber</application> enables the subscription
      for each specified database on the target server. The subscription starts
      streaming from the consistent LSN.
-    </para>
-   </step>
-
-   <step>
-    <para>
-     <application>pg_createsubscriber</application> removes the additional replication
-     slot that was used to get the consistent LSN on the source server.
     </para>
    </step>
 

@@ -100,9 +100,6 @@ static char *pg_resetwal_path = NULL;
 static LogicalRepInfo *dbinfo;
 static int	num_dbs = 0;
 
-static char temp_replslot[NAMEDATALEN] = {0};
-static bool made_transient_replslot = false;
-
 enum WaitPMResult
 {
 	POSTMASTER_READY,
@@ -153,16 +150,6 @@ cleanup_objects_atexit(void)
 					drop_replication_slot(conn, &dbinfo[i], NULL);
 				disconnect_database(conn);
 			}
-		}
-	}
-
-	if (made_transient_replslot)
-	{
-		conn = connect_database(dbinfo[0].pubconninfo);
-		if (conn != NULL)
-		{
-			drop_replication_slot(conn, &dbinfo[0], temp_replslot);
-			disconnect_database(conn);
 		}
 	}
 }
@@ -878,6 +865,8 @@ create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
 	pg_log_info("creating the replication slot \"%s\" on database \"%s\"", slot_name, dbinfo->dbname);
 
 	appendPQExpBuffer(str, "CREATE_REPLICATION_SLOT \"%s\"", slot_name);
+	if (transient_replslot)
+		appendPQExpBufferStr(str, " TEMPORARY");
 	appendPQExpBufferStr(str, " LOGICAL \"pgoutput\" NOEXPORT_SNAPSHOT");
 
 	pg_log_debug("command is: %s", str->data);
@@ -894,9 +883,7 @@ create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
 	}
 
 	/* for cleanup purposes */
-	if (transient_replslot)
-		made_transient_replslot = true;
-	else
+	if (!transient_replslot)
 		dbinfo->made_replslot = true;
 
 	if (!dry_run)
@@ -1414,6 +1401,7 @@ main(int argc, char **argv)
 	char	   *pub_base_conninfo = NULL;
 	char	   *sub_base_conninfo = NULL;
 	char	   *dbname_conninfo = NULL;
+	char		temp_replslot[NAMEDATALEN] = {0};
 
 	uint64		pub_sysid;
 	uint64		sub_sysid;
@@ -1675,21 +1663,16 @@ main(int argc, char **argv)
 	}
 
 	/*
-	 * Create a logical replication slot to get a consistent LSN.
+	 * Create a temporary logical replication slot to get a consistent LSN.
 	 *
 	 * This consistent LSN will be used later to advanced the recently created
-	 * replication slots. We cannot use the last created replication slot
-	 * because the consistent LSN should be obtained *after* the base backup
-	 * finishes (and the base backup should include the logical replication
-	 * slots).
+	 * replication slots. It is ok to use a temporary replication slot here
+	 * because it will have a short lifetime and it is only used as a mark to
+	 * start the logical replication.
 	 *
 	 * XXX we should probably use the last created replication slot to get a
 	 * consistent LSN but it should be changed after adding pg_basebackup
 	 * support.
-	 *
-	 * A temporary replication slot is not used here to avoid keeping a
-	 * replication connection open (depending when base backup was taken, the
-	 * connection should be open for a few hours).
 	 */
 	conn = connect_database(dbinfo[0].pubconninfo);
 	if (conn == NULL)
@@ -1785,26 +1768,23 @@ main(int argc, char **argv)
 	}
 
 	/*
-	 * The transient replication slot is no longer required. Drop it.
-	 *
-	 * If the physical replication slot exists, drop it.
+	 * If the primary_slot_name exists on primary, drop it.
 	 *
 	 * XXX we might not fail here. Instead, we provide a warning so the user
-	 * eventually drops the replication slot later.
+	 * eventually drops this replication slot later.
 	 */
-	conn = connect_database(dbinfo[0].pubconninfo);
-	if (conn == NULL)
+	if (primary_slot_name != NULL)
 	{
-		if (primary_slot_name != NULL)
+		conn = connect_database(dbinfo[0].pubconninfo);
+		if (conn != NULL)
+		{
+			drop_replication_slot(conn, &dbinfo[0], temp_replslot);
+		}
+		else
+		{
 			pg_log_warning("could not drop replication slot \"%s\" on primary", primary_slot_name);
-		pg_log_warning("could not drop transient replication slot \"%s\" on publisher", temp_replslot);
-		pg_log_warning_hint("Drop this replication slot soon to avoid retention of WAL files.");
-	}
-	else
-	{
-		drop_replication_slot(conn, &dbinfo[0], temp_replslot);
-		if (primary_slot_name != NULL)
-			drop_replication_slot(conn, &dbinfo[0], primary_slot_name);
+			pg_log_warning_hint("Drop this replication slot soon to avoid retention of WAL files.");
+		}
 		disconnect_database(conn);
 	}
 
