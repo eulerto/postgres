@@ -136,6 +136,8 @@ cleanup_objects_atexit(void)
 			if (conn != NULL)
 			{
 				drop_subscription(conn, &dbinfo[i]);
+				if (dbinfo[i].made_publication)
+					drop_publication(conn, &dbinfo[i]);
 				disconnect_database(conn);
 			}
 		}
@@ -1763,6 +1765,13 @@ main(int argc, char **argv)
 		conn = connect_database(dbinfo[i].subconninfo);
 		if (conn == NULL)
 			exit(1);
+
+		/*
+		 * Since the publication was created before the consistent LSN, it is
+		 * available on the subscriber when the physical replica is promoted.
+		 * Remove publications from the subscriber because it has no use.
+		 */
+		drop_publication(conn, &dbinfo[i]);
 
 		create_subscription(conn, &dbinfo[i]);
 
