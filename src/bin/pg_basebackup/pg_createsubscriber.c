@@ -449,26 +449,24 @@ get_sysid_from_conn(const char *conninfo)
 	res = PQexec(conn, "IDENTIFY_SYSTEM");
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
-		pg_log_error("could not send replication command \"%s\": %s",
-					 "IDENTIFY_SYSTEM", PQresultErrorMessage(res));
 		PQclear(res);
 		disconnect_database(conn);
-		exit(1);
+		pg_fatal("could not send replication command \"%s\": %s",
+					 "IDENTIFY_SYSTEM", PQresultErrorMessage(res));
 	}
 	if (PQntuples(res) != 1 || PQnfields(res) < 3)
 	{
-		pg_log_error("could not identify system: got %d rows and %d fields, expected %d rows and %d or more fields",
-					 PQntuples(res), PQnfields(res), 1, 3);
-
 		PQclear(res);
 		disconnect_database(conn);
-		exit(1);
+		pg_fatal("could not identify system: got %d rows and %d fields, expected %d rows and %d or more fields",
+					 PQntuples(res), PQnfields(res), 1, 3);
 	}
 
 	sysid = strtou64(PQgetvalue(res, 0, 0), NULL, 10);
 
 	pg_log_info("system identifier is %llu on publisher", (unsigned long long) sysid);
 
+	PQclear(res);
 	disconnect_database(conn);
 
 	return sysid;
@@ -490,10 +488,7 @@ get_control_from_datadir(const char *datadir)
 
 	cf = get_controlfile(datadir, &crc_ok);
 	if (!crc_ok)
-	{
-		pg_log_error("control file appears to be corrupt");
-		exit(1);
-	}
+		pg_fatal("control file appears to be corrupt");
 
 	sysid = cf->system_identifier;
 
@@ -523,10 +518,7 @@ modify_sysid(const char *pg_resetwal_path, const char *datadir)
 
 	cf = get_controlfile(datadir, &crc_ok);
 	if (!crc_ok)
-	{
-		pg_log_error("control file appears to be corrupt");
-		exit(1);
-	}
+		pg_fatal("control file appears to be corrupt");
 
 	/*
 	 * Select a new system identifier.
@@ -555,7 +547,7 @@ modify_sysid(const char *pg_resetwal_path, const char *datadir)
 		if (rc == 0)
 			pg_log_info("subscriber successfully changed the system identifier");
 		else
-			pg_log_error("subscriber failed to change system identifier: exit code: %d", rc);
+			pg_fatal("subscriber failed to change system identifier: exit code: %d", rc);
 	}
 
 	pfree(cf);
@@ -984,10 +976,7 @@ server_logfile_name(const char *datadir)
 	filename = (char *) pg_malloc0(MAXPGPATH);
 	len = snprintf(filename, MAXPGPATH, "%s/%s/server_start_%s.log", datadir, PGS_OUTPUT_DIR, timebuf);
 	if (len >= MAXPGPATH)
-	{
-		pg_log_error("log file path is too long");
-		exit(1);
-	}
+		pg_fatal("log file path is too long");
 
 	return filename;
 }
@@ -1078,16 +1067,10 @@ wait_for_end_recovery(const char *conninfo)
 		res = PQexec(conn, "SELECT pg_catalog.pg_is_in_recovery()");
 
 		if (PQresultStatus(res) != PGRES_TUPLES_OK)
-		{
-			pg_log_error("could not obtain recovery progress");
-			exit(1);
-		}
+			pg_fatal("could not obtain recovery progress");
 
 		if (PQntuples(res) != 1)
-		{
-			pg_log_error("unexpected result from pg_is_in_recovery function");
-			exit(1);
-		}
+			pg_fatal("unexpected result from pg_is_in_recovery function");
 
 		in_recovery = (strcmp(PQgetvalue(res, 0, 0), "t") == 0);
 
@@ -1108,9 +1091,8 @@ wait_for_end_recovery(const char *conninfo)
 		 */
 		if (recovery_timeout > 0 && timer >= recovery_timeout)
 		{
-			pg_log_error("recovery timed out");
 			stop_standby_server(pg_ctl_path, subscriber_dir);
-			exit(1);
+			pg_fatal("recovery timed out");
 		}
 
 		/* Keep waiting. */
@@ -1122,10 +1104,7 @@ wait_for_end_recovery(const char *conninfo)
 	disconnect_database(conn);
 
 	if (status == POSTMASTER_STILL_STARTING)
-	{
-		pg_log_error("server did not end recovery");
-		exit(1);
-	}
+		pg_fatal("server did not end recovery");
 
 	pg_log_info("postmaster reached the consistent state");
 }
@@ -1148,11 +1127,10 @@ create_publication(PGconn *conn, LogicalRepInfo *dbinfo)
 	res = PQexec(conn, str->data);
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
-		pg_log_error("could not obtain publication information: %s",
-					 PQresultErrorMessage(res));
 		PQclear(res);
 		PQfinish(conn);
-		exit(1);
+		pg_fatal("could not obtain publication information: %s",
+					 PQresultErrorMessage(res));
 	}
 
 	if (PQntuples(res) == 1)
@@ -1199,10 +1177,9 @@ create_publication(PGconn *conn, LogicalRepInfo *dbinfo)
 		res = PQexec(conn, str->data);
 		if (PQresultStatus(res) != PGRES_COMMAND_OK)
 		{
-			pg_log_error("could not create publication \"%s\" on database \"%s\": %s",
-						 dbinfo->pubname, dbinfo->dbname, PQerrorMessage(conn));
 			PQfinish(conn);
-			exit(1);
+			pg_fatal("could not create publication \"%s\" on database \"%s\": %s",
+						 dbinfo->pubname, dbinfo->dbname, PQerrorMessage(conn));
 		}
 	}
 
@@ -1278,10 +1255,9 @@ create_subscription(PGconn *conn, LogicalRepInfo *dbinfo)
 		res = PQexec(conn, str->data);
 		if (PQresultStatus(res) != PGRES_COMMAND_OK)
 		{
-			pg_log_error("could not create subscription \"%s\" on database \"%s\": %s",
-						 dbinfo->subname, dbinfo->dbname, PQerrorMessage(conn));
 			PQfinish(conn);
-			exit(1);
+			pg_fatal("could not create subscription \"%s\" on database \"%s\": %s",
+						 dbinfo->subname, dbinfo->dbname, PQerrorMessage(conn));
 		}
 	}
 
@@ -1350,20 +1326,18 @@ set_replication_progress(PGconn *conn, LogicalRepInfo *dbinfo, const char *lsn)
 	res = PQexec(conn, str->data);
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
-		pg_log_error("could not obtain subscription OID: %s",
-					 PQresultErrorMessage(res));
 		PQclear(res);
 		PQfinish(conn);
-		exit(1);
+		pg_fatal("could not obtain subscription OID: %s",
+					 PQresultErrorMessage(res));
 	}
 
 	if (PQntuples(res) != 1 && !dry_run)
 	{
-		pg_log_error("could not obtain subscription OID: got %d rows, expected %d rows",
-					 PQntuples(res), 1);
 		PQclear(res);
 		PQfinish(conn);
-		exit(1);
+		pg_fatal("could not obtain subscription OID: got %d rows, expected %d rows",
+					 PQntuples(res), 1);
 	}
 
 	if (dry_run)
@@ -1399,10 +1373,9 @@ set_replication_progress(PGconn *conn, LogicalRepInfo *dbinfo, const char *lsn)
 		res = PQexec(conn, str->data);
 		if (PQresultStatus(res) != PGRES_TUPLES_OK)
 		{
-			pg_log_error("could not set replication progress for the subscription \"%s\": %s",
-						 dbinfo->subname, PQresultErrorMessage(res));
 			PQfinish(conn);
-			exit(1);
+			pg_fatal("could not set replication progress for the subscription \"%s\": %s",
+						 dbinfo->subname, PQresultErrorMessage(res));
 		}
 
 		PQclear(res);
@@ -1437,10 +1410,9 @@ enable_subscription(PGconn *conn, LogicalRepInfo *dbinfo)
 		res = PQexec(conn, str->data);
 		if (PQresultStatus(res) != PGRES_COMMAND_OK)
 		{
-			pg_log_error("could not enable subscription \"%s\": %s", dbinfo->subname,
-						 PQerrorMessage(conn));
 			PQfinish(conn);
-			exit(1);
+			pg_fatal("could not enable subscription \"%s\": %s", dbinfo->subname,
+						 PQerrorMessage(conn));
 		}
 
 		PQclear(res);
@@ -1665,10 +1637,7 @@ main(int argc, char **argv)
 	pub_sysid = get_sysid_from_conn(dbinfo[0].pubconninfo);
 	sub_sysid = get_control_from_datadir(subscriber_dir);
 	if (pub_sysid != sub_sysid)
-	{
-		pg_log_error("subscriber data directory is not a copy of the source database cluster");
-		exit(1);
-	}
+		pg_fatal("subscriber data directory is not a copy of the source database cluster");
 
 	/*
 	 * Create the output directory to store any data generated by this tool.
@@ -1676,16 +1645,10 @@ main(int argc, char **argv)
 	base_dir = (char *) pg_malloc0(MAXPGPATH);
 	len = snprintf(base_dir, MAXPGPATH, "%s/%s", subscriber_dir, PGS_OUTPUT_DIR);
 	if (len >= MAXPGPATH)
-	{
-		pg_log_error("directory path for subscriber is too long");
-		exit(1);
-	}
+		pg_fatal("directory path for subscriber is too long");
 
 	if (mkdir(base_dir, pg_dir_create_mode) < 0 && errno != EEXIST)
-	{
-		pg_log_error("could not create directory \"%s\": %m", base_dir);
-		exit(1);
-	}
+		pg_fatal("could not create directory \"%s\": %m", base_dir);
 
 	server_start_log = server_logfile_name(subscriber_dir);
 
