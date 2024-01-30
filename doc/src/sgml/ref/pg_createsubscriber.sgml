@@ -51,10 +51,8 @@ PostgreSQL documentation
  <refsect1>
   <title>Description</title>
   <para>
-   <application>pg_createsubscriber</application> takes the publisher and subscriber
-   connection strings, a cluster directory from a physical replica and a list of
-   database names and it sets up a new logical replica using the physical
-   recovery process.
+    <application>pg_createsubscriber</application> creates a new logical
+    replica from a physical standby server.
   </para>
 
   <para>
