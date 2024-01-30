@@ -25,6 +25,7 @@
 #include "common/file_perm.h"
 #include "common/file_utils.h"
 #include "common/logging.h"
+#include "common/restricted_token.h"
 #include "fe_utils/recovery_gen.h"
 #include "fe_utils/simple_list.h"
 #include "getopt_long.h"
@@ -1493,6 +1494,8 @@ main(int argc, char **argv)
 		exit(1);
 	}
 #endif
+
+	get_restricted_token();
 
 	while ((c = getopt_long(argc, argv, "D:P:S:d:nrt:v",
 							long_options, &option_index)) != -1)
