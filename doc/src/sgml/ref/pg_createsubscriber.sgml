@@ -83,7 +83,7 @@ PostgreSQL documentation
      </varlistentry>
 
      <varlistentry>
-      <term><option>-P  <replaceable class="parameter">connstr</replaceable></option></term>
+      <term><option>-P <replaceable class="parameter">connstr</replaceable></option></term>
       <term><option>--publisher-server=<replaceable class="parameter">connstr</replaceable></option></term>
       <listitem>
        <para>
