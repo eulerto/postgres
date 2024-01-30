@@ -36,10 +36,8 @@ typedef struct LogicalRepInfo
 {
 	Oid			oid;			/* database OID */
 	char	   *dbname;			/* database name */
-	char	   *pubconninfo;	/* publication connection string for logical
-								 * replication */
-	char	   *subconninfo;	/* subscription connection string for logical
-								 * replication */
+	char	   *pubconninfo;	/* publisher connection string */
+	char	   *subconninfo;	/* subscriber connection string */
 	char	   *pubname;		/* publication name */
 	char	   *subname;		/* subscription name (also replication slot
 								 * name) */
