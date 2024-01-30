@@ -618,10 +618,10 @@ setup_publisher(LogicalRepInfo *dbinfo)
 
 		/*
 		 * Build the replication slot name. The name must not exceed
-		 * NAMEDATALEN - 1. This current schema uses a maximum of 42 characters
-		 * (20 + 10 + 1 + 10 + '\0'). PID is included to reduce the probability
-		 * of collision. By default, subscription name is used as replication
-		 * slot name.
+		 * NAMEDATALEN - 1. This current schema uses a maximum of 42
+		 * characters (20 + 10 + 1 + 10 + '\0'). PID is included to reduce the
+		 * probability of collision. By default, subscription name is used as
+		 * replication slot name.
 		 */
 		snprintf(replslotname, sizeof(replslotname),
 				 "pg_createsubscriber_%u_%d",
@@ -995,8 +995,8 @@ server_logfile_name(const char *datadir)
 static void
 start_standby_server(const char *pg_ctl_path, const char *datadir, const char *logfile)
 {
-	char   *pg_ctl_cmd;
-	int		rc;
+	char	   *pg_ctl_cmd;
+	int			rc;
 
 	pg_ctl_cmd = psprintf("\"%s\" start -D \"%s\" -s -l \"%s\"", pg_ctl_path, datadir, logfile);
 	rc = system(pg_ctl_cmd);
@@ -1006,8 +1006,8 @@ start_standby_server(const char *pg_ctl_path, const char *datadir, const char *l
 static void
 stop_standby_server(const char *pg_ctl_path, const char *datadir)
 {
-	char   *pg_ctl_cmd;
-	int		rc;
+	char	   *pg_ctl_cmd;
+	int			rc;
 
 	pg_ctl_cmd = psprintf("\"%s\" stop -D \"%s\" -s", pg_ctl_path, datadir);
 	rc = system(pg_ctl_cmd);
@@ -1159,8 +1159,8 @@ create_publication(PGconn *conn, LogicalRepInfo *dbinfo)
 	{
 		/*
 		 * If publication name already exists and puballtables is true, let's
-		 * use it. A previous run of pg_createsubscriber must have created this
-		 * publication. Bail out.
+		 * use it. A previous run of pg_createsubscriber must have created
+		 * this publication. Bail out.
 		 */
 		if (strcmp(PQgetvalue(res, 0, 0), "t") == 0)
 		{
@@ -1173,8 +1173,8 @@ create_publication(PGconn *conn, LogicalRepInfo *dbinfo)
 			 * Unfortunately, if it reaches this code path, it will always
 			 * fail (unless you decide to change the existing publication
 			 * name). That's bad but it is very unlikely that the user will
-			 * choose a name with pg_createsubscriber_ prefix followed by the exact
-			 * database oid in which puballtables is false.
+			 * choose a name with pg_createsubscriber_ prefix followed by the
+			 * exact database oid in which puballtables is false.
 			 */
 			pg_log_error("publication \"%s\" does not replicate changes for all tables",
 						 dbinfo->pubname);
@@ -1709,8 +1709,8 @@ main(int argc, char **argv)
 		/*
 		 * Check if the primary server is ready for logical replication. This
 		 * routine checks if a replication slot is in use on primary so it
-		 * relies on check_subscriber() to obtain the primary_slot_name. That's
-		 * why it is called after it.
+		 * relies on check_subscriber() to obtain the primary_slot_name.
+		 * That's why it is called after it.
 		 */
 		if (!check_publisher(dbinfo))
 			exit(1);
@@ -1797,8 +1797,8 @@ main(int argc, char **argv)
 
 	/*
 	 * Create the subscription for each database on subscriber. It does not
-	 * enable it immediately because it needs to adjust the logical replication
-	 * start point to the LSN reported by consistent_lsn (see
+	 * enable it immediately because it needs to adjust the logical
+	 * replication start point to the LSN reported by consistent_lsn (see
 	 * set_replication_progress). It also cleans up publications created by
 	 * this tool and replication to the standby.
 	 */
