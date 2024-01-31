@@ -19,6 +19,7 @@
 #include <time.h>
 
 #include "access/xlogdefs.h"
+#include "catalog/pg_authid_d.h"
 #include "catalog/pg_control.h"
 #include "common/connect.h"
 #include "common/controldata_utils.h"
@@ -760,12 +761,50 @@ check_subscriber(LogicalRepInfo *dbinfo)
 {
 	PGconn	   *conn;
 	PGresult   *res;
+	PQExpBuffer str = createPQExpBuffer();
 
 	int			max_lrworkers;
 	int			max_repslots;
 	int			max_wprocs;
 
 	pg_log_info("checking settings on subscriber");
+
+	conn = connect_database(dbinfo[0].subconninfo);
+	if (conn == NULL)
+		exit(1);
+
+	/*
+	 * Subscriptions can only be created by roles that have the privileges of
+	 * pg_create_subscription role and CREATE privileges on the specified
+	 * database.
+	 */
+	appendPQExpBuffer(str, "SELECT pg_has_role(current_user, %u, 'MEMBER'), has_database_privilege(current_user, '%s', 'CREATE')", ROLE_PG_CREATE_SUBSCRIPTION, dbinfo[0].dbname);
+
+	pg_log_debug("command is: %s", str->data);
+
+	res = PQexec(conn, str->data);
+
+	if (strcmp(PQgetvalue(res, 0, 0), "t") != 0)
+	{
+		pg_log_error("permission denied to create subscription");
+		pg_log_error_hint("Only roles with privileges of the \"%s\" role may create subscriptions.",
+				"pg_create_subscription");
+		return false;
+	}
+	if (strcmp(PQgetvalue(res, 0, 1), "t") != 0)
+	{
+		pg_log_error("permission denied for database %s", dbinfo[0].dbname);
+		return false;
+	}
+
+	if (PQresultStatus(res) != PGRES_TUPLES_OK)
+	{
+		pg_log_error("could not obtain access privilege information: %s", PQresultErrorMessage(res));
+		return false;
+	}
+
+	destroyPQExpBuffer(str);
+	PQclear(res);
 
 	/*
 	 * Logical replication requires a few parameters to be set on subscriber.
@@ -776,10 +815,6 @@ check_subscriber(LogicalRepInfo *dbinfo)
 	 * max_logical_replication_workers >= number of dbs to be converted
 	 * max_worker_processes >= 1 + number of dbs to be converted
 	 */
-	conn = connect_database(dbinfo[0].subconninfo);
-	if (conn == NULL)
-		exit(1);
-
 	res = PQexec(conn,
 				 "SELECT setting FROM pg_settings WHERE name IN ('max_logical_replication_workers', 'max_replication_slots', 'max_worker_processes', 'primary_slot_name') ORDER BY name");
 
