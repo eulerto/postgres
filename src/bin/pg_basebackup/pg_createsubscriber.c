@@ -778,7 +778,7 @@ check_subscriber(LogicalRepInfo *dbinfo)
 	 * pg_create_subscription role and CREATE privileges on the specified
 	 * database.
 	 */
-	appendPQExpBuffer(str, "SELECT pg_has_role(current_user, %u, 'MEMBER'), has_database_privilege(current_user, '%s', 'CREATE')", ROLE_PG_CREATE_SUBSCRIPTION, dbinfo[0].dbname);
+	appendPQExpBuffer(str, "SELECT pg_has_role(current_user, %u, 'MEMBER'), has_database_privilege(current_user, '%s', 'CREATE'), has_function_privilege(current_user, 'pg_catalog.pg_replication_origin_advance(text, pg_lsn)', 'EXECUTE')", ROLE_PG_CREATE_SUBSCRIPTION, dbinfo[0].dbname);
 
 	pg_log_debug("command is: %s", str->data);
 
@@ -794,6 +794,11 @@ check_subscriber(LogicalRepInfo *dbinfo)
 	if (strcmp(PQgetvalue(res, 0, 1), "t") != 0)
 	{
 		pg_log_error("permission denied for database %s", dbinfo[0].dbname);
+		return false;
+	}
+	if (strcmp(PQgetvalue(res, 0, 1), "t") != 0)
+	{
+		pg_log_error("permission denied for function \"%s\"", "pg_catalog.pg_replication_origin_advance(text, pg_lsn)");
 		return false;
 	}
 
