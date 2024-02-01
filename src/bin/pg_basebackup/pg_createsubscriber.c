@@ -532,7 +532,7 @@ modify_sysid(const char *pg_resetwal_path, const char *datadir)
 
 	pg_log_info("running pg_resetwal on the subscriber");
 
-	cmd_str = psprintf("\"%s\" -D \"%s\"", pg_resetwal_path, datadir);
+	cmd_str = psprintf("\"%s\" -D \"%s\" > \"%s\"", pg_resetwal_path, datadir, DEVNULL);
 
 	pg_log_debug("command is: %s", cmd_str);
 
