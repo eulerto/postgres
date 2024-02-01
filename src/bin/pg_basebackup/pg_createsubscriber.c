@@ -34,6 +34,17 @@
 
 #define	PGS_OUTPUT_DIR	"pg_createsubscriber_output.d"
 
+/* Command-line options */
+typedef struct CreateSubscriberOptions
+{
+	char	   *subscriber_dir;			/* standby/subscriber data directory */
+	char	   *pub_conninfo_str;		/* publisher connection string */
+	char	   *sub_conninfo_str;		/* subscriber connection string */
+	SimpleStringList database_names;	/* list of database names */
+	bool		retain;					/* retain log file? */
+	int			recovery_timeout;		/* stop recovery after this time */
+} CreateSubscriberOptions;
+
 typedef struct LogicalRepInfo
 {
 	Oid			oid;			/* database OID */
@@ -56,12 +67,12 @@ static char *get_base_conninfo(char *conninfo, char *dbname,
 static bool get_exec_path(const char *path);
 static bool check_data_directory(const char *datadir);
 static char *concat_conninfo_dbname(const char *conninfo, const char *dbname);
-static LogicalRepInfo *store_pub_sub_info(const char *pub_base_conninfo, const char *sub_base_conninfo);
+static LogicalRepInfo *store_pub_sub_info(SimpleStringList dbnames, const char *pub_base_conninfo, const char *sub_base_conninfo);
 static PGconn *connect_database(const char *conninfo);
 static void disconnect_database(PGconn *conn);
-static uint64 get_sysid_from_conn(const char *conninfo);
-static uint64 get_control_from_datadir(const char *datadir);
-static void modify_sysid(const char *pg_resetwal_path, const char *datadir);
+static uint64 get_primary_sysid(const char *conninfo);
+static uint64 get_standby_sysid(const char *datadir);
+static void modify_subscriber_sysid(const char *pg_resetwal_path, CreateSubscriberOptions opt);
 static bool check_publisher(LogicalRepInfo *dbinfo);
 static bool setup_publisher(LogicalRepInfo *dbinfo);
 static bool check_subscriber(LogicalRepInfo *dbinfo);
@@ -73,7 +84,7 @@ static char *setup_server_logfile(const char *datadir);
 static void start_standby_server(const char *pg_ctl_path, const char *datadir, const char *logfile);
 static void stop_standby_server(const char *pg_ctl_path, const char *datadir);
 static void pg_ctl_status(const char *pg_ctl_cmd, int rc, int action);
-static void wait_for_end_recovery(const char *conninfo);
+static void wait_for_end_recovery(const char *conninfo, CreateSubscriberOptions opt);
 static void create_publication(PGconn *conn, LogicalRepInfo *dbinfo);
 static void drop_publication(PGconn *conn, LogicalRepInfo *dbinfo);
 static void create_subscription(PGconn *conn, LogicalRepInfo *dbinfo);
@@ -87,14 +98,8 @@ static void enable_subscription(PGconn *conn, LogicalRepInfo *dbinfo);
 /* Options */
 static const char *progname;
 
-static char *subscriber_dir = NULL;
-static char *pub_conninfo_str = NULL;
-static char *sub_conninfo_str = NULL;
-static SimpleStringList database_names = {NULL, NULL};
 static char *primary_slot_name = NULL;
 static bool dry_run = false;
-static bool retain = false;
-static int	recovery_timeout = 0;
 
 static bool success = false;
 
@@ -361,7 +366,7 @@ concat_conninfo_dbname(const char *conninfo, const char *dbname)
  * Store publication and subscription information.
  */
 static LogicalRepInfo *
-store_pub_sub_info(const char *pub_base_conninfo, const char *sub_base_conninfo)
+store_pub_sub_info(SimpleStringList dbnames, const char *pub_base_conninfo, const char *sub_base_conninfo)
 {
 	LogicalRepInfo *dbinfo;
 	SimpleStringListCell *cell;
@@ -369,7 +374,7 @@ store_pub_sub_info(const char *pub_base_conninfo, const char *sub_base_conninfo)
 
 	dbinfo = (LogicalRepInfo *) pg_malloc(num_dbs * sizeof(LogicalRepInfo));
 
-	for (cell = database_names.head; cell; cell = cell->next)
+	for (cell = dbnames.head; cell; cell = cell->next)
 	{
 		char	   *conninfo;
 
@@ -430,7 +435,7 @@ disconnect_database(PGconn *conn)
  * to compare if a data directory is a clone of another one.
  */
 static uint64
-get_sysid_from_conn(const char *conninfo)
+get_primary_sysid(const char *conninfo)
 {
 	PGconn	   *conn;
 	PGresult   *res;
@@ -454,7 +459,7 @@ get_sysid_from_conn(const char *conninfo)
 		PQclear(res);
 		disconnect_database(conn);
 		pg_fatal("could not get system identifier: got %d rows, expected %d row",
-					 PQntuples(res), 1);
+				 PQntuples(res), 1);
 	}
 
 	sysid = strtou64(PQgetvalue(res, 0, 0), NULL, 10);
@@ -473,7 +478,7 @@ get_sysid_from_conn(const char *conninfo)
  * and avoids a connection.
  */
 static uint64
-get_control_from_datadir(const char *datadir)
+get_standby_sysid(const char *datadir)
 {
 	ControlFileData *cf;
 	bool		crc_ok;
@@ -500,7 +505,7 @@ get_control_from_datadir(const char *datadir)
  * files from one of the systems might be used in the other one.
  */
 static void
-modify_sysid(const char *pg_resetwal_path, const char *datadir)
+modify_subscriber_sysid(const char *pg_resetwal_path, CreateSubscriberOptions opt)
 {
 	ControlFileData *cf;
 	bool		crc_ok;
@@ -511,7 +516,7 @@ modify_sysid(const char *pg_resetwal_path, const char *datadir)
 
 	pg_log_info("modifying system identifier from subscriber");
 
-	cf = get_controlfile(datadir, &crc_ok);
+	cf = get_controlfile(opt.subscriber_dir, &crc_ok);
 	if (!crc_ok)
 		pg_fatal("control file appears to be corrupt");
 
@@ -526,13 +531,13 @@ modify_sysid(const char *pg_resetwal_path, const char *datadir)
 	cf->system_identifier |= getpid() & 0xFFF;
 
 	if (!dry_run)
-		update_controlfile(datadir, cf, true);
+		update_controlfile(opt.subscriber_dir, cf, true);
 
 	pg_log_info("system identifier is %llu on subscriber", (unsigned long long) cf->system_identifier);
 
 	pg_log_info("running pg_resetwal on the subscriber");
 
-	cmd_str = psprintf("\"%s\" -D \"%s\" > \"%s\"", pg_resetwal_path, datadir, DEVNULL);
+	cmd_str = psprintf("\"%s\" -D \"%s\" > \"%s\"", pg_resetwal_path, opt.subscriber_dir, DEVNULL);
 
 	pg_log_debug("command is: %s", cmd_str);
 
@@ -651,9 +656,8 @@ check_publisher(LogicalRepInfo *dbinfo)
 	 * Since these parameters are not a requirement for physical replication,
 	 * we should check it to make sure it won't fail.
 	 *
-	 * wal_level = logical
-	 * max_replication_slots >= current + number of dbs to be converted
-	 * max_wal_senders >= current + number of dbs to be converted
+	 * wal_level = logical max_replication_slots >= current + number of dbs to
+	 * be converted max_wal_senders >= current + number of dbs to be converted
 	 */
 	conn = connect_database(dbinfo[0].pubconninfo);
 	if (conn == NULL)
@@ -783,7 +787,7 @@ check_subscriber(LogicalRepInfo *dbinfo)
 	{
 		pg_log_error("permission denied to create subscription");
 		pg_log_error_hint("Only roles with privileges of the \"%s\" role may create subscriptions.",
-				"pg_create_subscription");
+						  "pg_create_subscription");
 		return false;
 	}
 	if (strcmp(PQgetvalue(res, 0, 1), "t") != 0)
@@ -932,7 +936,7 @@ create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
 	pg_log_info("creating the replication slot \"%s\" on database \"%s\"", slot_name, dbinfo->dbname);
 
 	appendPQExpBuffer(str, "SELECT lsn FROM pg_create_logical_replication_slot('%s', '%s', %s, false, false)",
-			slot_name, "pgoutput", transient_replslot ? "true" : "false");
+					  slot_name, "pgoutput", transient_replslot ? "true" : "false");
 
 	pg_log_debug("command is: %s", str->data);
 
@@ -1011,7 +1015,7 @@ setup_server_logfile(const char *datadir)
 
 	if (!GetDataDirectoryCreatePerm(datadir))
 		pg_fatal("could not read permissions of directory \"%s\": %m",
-				datadir);
+				 datadir);
 
 	if (mkdir(base_dir, pg_dir_create_mode) < 0 && errno != EEXIST)
 		pg_fatal("could not create directory \"%s\": %m", base_dir);
@@ -1097,7 +1101,7 @@ pg_ctl_status(const char *pg_ctl_cmd, int rc, int action)
  * the recovery process. By default, it waits forever.
  */
 static void
-wait_for_end_recovery(const char *conninfo)
+wait_for_end_recovery(const char *conninfo, CreateSubscriberOptions opt)
 {
 	PGconn	   *conn;
 	PGresult   *res;
@@ -1139,9 +1143,9 @@ wait_for_end_recovery(const char *conninfo)
 		/*
 		 * Bail out after recovery_timeout seconds if this option is set.
 		 */
-		if (recovery_timeout > 0 && timer >= recovery_timeout)
+		if (opt.recovery_timeout > 0 && timer >= opt.recovery_timeout)
 		{
-			stop_standby_server(pg_ctl_path, subscriber_dir);
+			stop_standby_server(pg_ctl_path, opt.subscriber_dir);
 			pg_fatal("recovery timed out");
 		}
 
@@ -1180,7 +1184,7 @@ create_publication(PGconn *conn, LogicalRepInfo *dbinfo)
 		PQclear(res);
 		PQfinish(conn);
 		pg_fatal("could not obtain publication information: %s",
-					 PQresultErrorMessage(res));
+				 PQresultErrorMessage(res));
 	}
 
 	if (PQntuples(res) == 1)
@@ -1229,7 +1233,7 @@ create_publication(PGconn *conn, LogicalRepInfo *dbinfo)
 		{
 			PQfinish(conn);
 			pg_fatal("could not create publication \"%s\" on database \"%s\": %s",
-						 dbinfo->pubname, dbinfo->dbname, PQerrorMessage(conn));
+					 dbinfo->pubname, dbinfo->dbname, PQerrorMessage(conn));
 		}
 	}
 
@@ -1307,7 +1311,7 @@ create_subscription(PGconn *conn, LogicalRepInfo *dbinfo)
 		{
 			PQfinish(conn);
 			pg_fatal("could not create subscription \"%s\" on database \"%s\": %s",
-						 dbinfo->subname, dbinfo->dbname, PQerrorMessage(conn));
+					 dbinfo->subname, dbinfo->dbname, PQerrorMessage(conn));
 		}
 	}
 
@@ -1379,7 +1383,7 @@ set_replication_progress(PGconn *conn, LogicalRepInfo *dbinfo, const char *lsn)
 		PQclear(res);
 		PQfinish(conn);
 		pg_fatal("could not obtain subscription OID: %s",
-					 PQresultErrorMessage(res));
+				 PQresultErrorMessage(res));
 	}
 
 	if (PQntuples(res) != 1 && !dry_run)
@@ -1387,7 +1391,7 @@ set_replication_progress(PGconn *conn, LogicalRepInfo *dbinfo, const char *lsn)
 		PQclear(res);
 		PQfinish(conn);
 		pg_fatal("could not obtain subscription OID: got %d rows, expected %d rows",
-					 PQntuples(res), 1);
+				 PQntuples(res), 1);
 	}
 
 	if (dry_run)
@@ -1425,7 +1429,7 @@ set_replication_progress(PGconn *conn, LogicalRepInfo *dbinfo, const char *lsn)
 		{
 			PQfinish(conn);
 			pg_fatal("could not set replication progress for the subscription \"%s\": %s",
-						 dbinfo->subname, PQresultErrorMessage(res));
+					 dbinfo->subname, PQresultErrorMessage(res));
 		}
 
 		PQclear(res);
@@ -1462,7 +1466,7 @@ enable_subscription(PGconn *conn, LogicalRepInfo *dbinfo)
 		{
 			PQfinish(conn);
 			pg_fatal("could not enable subscription \"%s\": %s", dbinfo->subname,
-						 PQerrorMessage(conn));
+					 PQerrorMessage(conn));
 		}
 
 		PQclear(res);
@@ -1488,6 +1492,8 @@ main(int argc, char **argv)
 		{"verbose", no_argument, NULL, 'v'},
 		{NULL, 0, NULL, 0}
 	};
+
+	CreateSubscriberOptions opt;
 
 	int			c;
 	int			option_index;
@@ -1530,6 +1536,19 @@ main(int argc, char **argv)
 		}
 	}
 
+	memset(&opt, 0, sizeof(CreateSubscriberOptions));
+
+	/* Default settings */
+	opt.subscriber_dir = NULL;
+	opt.pub_conninfo_str = NULL;
+	opt.sub_conninfo_str = NULL;
+	opt.database_names = (SimpleStringList)
+	{
+		NULL, NULL
+	};
+	opt.retain = false;
+	opt.recovery_timeout = 0;
+
 	/*
 	 * Don't allow it to be run as root. It uses pg_ctl which does not allow
 	 * it either.
@@ -1552,19 +1571,19 @@ main(int argc, char **argv)
 		switch (c)
 		{
 			case 'D':
-				subscriber_dir = pg_strdup(optarg);
+				opt.subscriber_dir = pg_strdup(optarg);
 				break;
 			case 'P':
-				pub_conninfo_str = pg_strdup(optarg);
+				opt.pub_conninfo_str = pg_strdup(optarg);
 				break;
 			case 'S':
-				sub_conninfo_str = pg_strdup(optarg);
+				opt.sub_conninfo_str = pg_strdup(optarg);
 				break;
 			case 'd':
 				/* Ignore duplicated database names. */
-				if (!simple_string_list_member(&database_names, optarg))
+				if (!simple_string_list_member(&opt.database_names, optarg))
 				{
-					simple_string_list_append(&database_names, optarg);
+					simple_string_list_append(&opt.database_names, optarg);
 					num_dbs++;
 				}
 				break;
@@ -1572,10 +1591,10 @@ main(int argc, char **argv)
 				dry_run = true;
 				break;
 			case 'r':
-				retain = true;
+				opt.retain = true;
 				break;
 			case 't':
-				recovery_timeout = atoi(optarg);
+				opt.recovery_timeout = atoi(optarg);
 				break;
 			case 'v':
 				pg_logging_increase_verbosity();
@@ -1601,7 +1620,7 @@ main(int argc, char **argv)
 	/*
 	 * Required arguments
 	 */
-	if (subscriber_dir == NULL)
+	if (opt.subscriber_dir == NULL)
 	{
 		pg_log_error("no subscriber data directory specified");
 		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
@@ -1612,7 +1631,7 @@ main(int argc, char **argv)
 	 * Parse connection string. Build a base connection string that might be
 	 * reused by multiple databases.
 	 */
-	if (pub_conninfo_str == NULL)
+	if (opt.pub_conninfo_str == NULL)
 	{
 		/*
 		 * TODO use primary_conninfo (if available) from subscriber and
@@ -1624,22 +1643,22 @@ main(int argc, char **argv)
 		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 		exit(1);
 	}
-	pub_base_conninfo = get_base_conninfo(pub_conninfo_str, dbname_conninfo,
+	pub_base_conninfo = get_base_conninfo(opt.pub_conninfo_str, dbname_conninfo,
 										  "publisher");
 	if (pub_base_conninfo == NULL)
 		exit(1);
 
-	if (sub_conninfo_str == NULL)
+	if (opt.sub_conninfo_str == NULL)
 	{
 		pg_log_error("no subscriber connection string specified");
 		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 		exit(1);
 	}
-	sub_base_conninfo = get_base_conninfo(sub_conninfo_str, NULL, "subscriber");
+	sub_base_conninfo = get_base_conninfo(opt.sub_conninfo_str, NULL, "subscriber");
 	if (sub_base_conninfo == NULL)
 		exit(1);
 
-	if (database_names.head == NULL)
+	if (opt.database_names.head == NULL)
 	{
 		pg_log_info("no database was specified");
 
@@ -1650,7 +1669,7 @@ main(int argc, char **argv)
 		 */
 		if (dbname_conninfo)
 		{
-			simple_string_list_append(&database_names, dbname_conninfo);
+			simple_string_list_append(&opt.database_names, dbname_conninfo);
 			num_dbs++;
 
 			pg_log_info("database \"%s\" was extracted from the publisher connection string",
@@ -1671,11 +1690,11 @@ main(int argc, char **argv)
 		exit(1);
 
 	/* rudimentary check for a data directory. */
-	if (!check_data_directory(subscriber_dir))
+	if (!check_data_directory(opt.subscriber_dir))
 		exit(1);
 
 	/* Store database information for publisher and subscriber. */
-	dbinfo = store_pub_sub_info(pub_base_conninfo, sub_base_conninfo);
+	dbinfo = store_pub_sub_info(opt.database_names, pub_base_conninfo, sub_base_conninfo);
 
 	/* Register a function to clean up objects in case of failure. */
 	atexit(cleanup_objects_atexit);
@@ -1684,18 +1703,18 @@ main(int argc, char **argv)
 	 * Check if the subscriber data directory has the same system identifier
 	 * than the publisher data directory.
 	 */
-	pub_sysid = get_sysid_from_conn(dbinfo[0].pubconninfo);
-	sub_sysid = get_control_from_datadir(subscriber_dir);
+	pub_sysid = get_primary_sysid(dbinfo[0].pubconninfo);
+	sub_sysid = get_standby_sysid(opt.subscriber_dir);
 	if (pub_sysid != sub_sysid)
 		pg_fatal("subscriber data directory is not a copy of the source database cluster");
 
 	/*
 	 * Create the output directory to store any data generated by this tool.
 	 */
-	server_start_log = setup_server_logfile(subscriber_dir);
+	server_start_log = setup_server_logfile(opt.subscriber_dir);
 
 	/* subscriber PID file. */
-	snprintf(pidfile, MAXPGPATH, "%s/postmaster.pid", subscriber_dir);
+	snprintf(pidfile, MAXPGPATH, "%s/postmaster.pid", opt.subscriber_dir);
 
 	/*
 	 * The standby server must be running. That's because some checks will be
@@ -1732,7 +1751,7 @@ main(int argc, char **argv)
 		/* Stop the standby server. */
 		pg_log_info("standby is up and running");
 		pg_log_info("stopping the server to start the transformation steps");
-		stop_standby_server(pg_ctl_path, subscriber_dir);
+		stop_standby_server(pg_ctl_path, opt.subscriber_dir);
 	}
 	else
 	{
@@ -1783,7 +1802,7 @@ main(int argc, char **argv)
 	{
 		appendPQExpBuffer(recoveryconfcontents, "recovery_target_lsn = '%s'\n",
 						  consistent_lsn);
-		WriteRecoveryConfig(conn, subscriber_dir, recoveryconfcontents);
+		WriteRecoveryConfig(conn, opt.subscriber_dir, recoveryconfcontents);
 	}
 	disconnect_database(conn);
 
@@ -1793,12 +1812,12 @@ main(int argc, char **argv)
 	 * Start subscriber and wait until accepting connections.
 	 */
 	pg_log_info("starting the subscriber");
-	start_standby_server(pg_ctl_path, subscriber_dir, server_start_log);
+	start_standby_server(pg_ctl_path, opt.subscriber_dir, server_start_log);
 
 	/*
 	 * Waiting the subscriber to be promoted.
 	 */
-	wait_for_end_recovery(dbinfo[0].subconninfo);
+	wait_for_end_recovery(dbinfo[0].subconninfo, opt);
 
 	/*
 	 * Create the subscription for each database on subscriber. It does not
@@ -1835,18 +1854,18 @@ main(int argc, char **argv)
 	 * Stop the subscriber.
 	 */
 	pg_log_info("stopping the subscriber");
-	stop_standby_server(pg_ctl_path, subscriber_dir);
+	stop_standby_server(pg_ctl_path, opt.subscriber_dir);
 
 	/*
-	 * Change system identifier.
+	 * Change system identifier from subscriber.
 	 */
-	modify_sysid(pg_resetwal_path, subscriber_dir);
+	modify_subscriber_sysid(pg_resetwal_path, opt);
 
 	/*
 	 * The log file is kept if retain option is specified or this tool does
 	 * not run successfully. Otherwise, log file is removed.
 	 */
-	if (!retain)
+	if (!opt.retain)
 		unlink(server_start_log);
 
 	success = true;

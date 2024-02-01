@@ -518,6 +518,7 @@ CreateSeqStmt
 CreateStatsStmt
 CreateStmt
 CreateStmtContext
+CreateSubscriberOptions
 CreateSubscriptionStmt
 CreateTableAsStmt
 CreateTableSpaceStmt
