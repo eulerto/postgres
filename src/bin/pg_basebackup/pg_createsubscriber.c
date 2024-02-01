@@ -151,7 +151,7 @@ cleanup_objects_atexit(void)
 				if (dbinfo[i].made_publication)
 					drop_publication(conn, &dbinfo[i]);
 				if (dbinfo[i].made_replslot)
-					drop_replication_slot(conn, &dbinfo[i], NULL);
+					drop_replication_slot(conn, &dbinfo[i], dbinfo[i].subname);
 				disconnect_database(conn);
 			}
 		}
@@ -1821,7 +1821,7 @@ main(int argc, char **argv)
 		conn = connect_database(dbinfo[0].pubconninfo);
 		if (conn != NULL)
 		{
-			drop_replication_slot(conn, &dbinfo[0], temp_replslot);
+			drop_replication_slot(conn, &dbinfo[0], primary_slot_name);
 		}
 		else
 		{
