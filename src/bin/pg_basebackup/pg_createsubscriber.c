@@ -397,12 +397,8 @@ connect_database(const char *conninfo)
 {
 	PGconn	   *conn;
 	PGresult   *res;
-	const char *rconninfo;
 
-	/* logical replication mode */
-	rconninfo = psprintf("%s replication=database", conninfo);
-
-	conn = PQconnectdb(rconninfo);
+	conn = PQconnectdb(conninfo);
 	if (PQstatus(conn) != CONNECTION_OK)
 	{
 		pg_log_error("connection to database failed: %s", PQerrorMessage(conn));
@@ -446,20 +442,19 @@ get_sysid_from_conn(const char *conninfo)
 	if (conn == NULL)
 		exit(1);
 
-	res = PQexec(conn, "IDENTIFY_SYSTEM");
+	res = PQexec(conn, "SELECT system_identifier FROM pg_control_system()");
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
 		PQclear(res);
 		disconnect_database(conn);
-		pg_fatal("could not send replication command \"%s\": %s",
-					 "IDENTIFY_SYSTEM", PQresultErrorMessage(res));
+		pg_fatal("could not get system identifier: %s", PQresultErrorMessage(res));
 	}
-	if (PQntuples(res) != 1 || PQnfields(res) < 3)
+	if (PQntuples(res) != 1)
 	{
 		PQclear(res);
 		disconnect_database(conn);
-		pg_fatal("could not identify system: got %d rows and %d fields, expected %d rows and %d or more fields",
-					 PQntuples(res), PQnfields(res), 1, 3);
+		pg_fatal("could not get system identifier: got %d rows, expected %d row",
+					 PQntuples(res), 1);
 	}
 
 	sysid = strtou64(PQgetvalue(res, 0, 0), NULL, 10);
@@ -475,7 +470,7 @@ get_sysid_from_conn(const char *conninfo)
 /*
  * Obtain the system identifier from control file. It will be used to compare
  * if a data directory is a clone of another one. This routine is used locally
- * and avoids a replication connection.
+ * and avoids a connection.
  */
 static uint64
 get_control_from_datadir(const char *datadir)
@@ -936,10 +931,8 @@ create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
 
 	pg_log_info("creating the replication slot \"%s\" on database \"%s\"", slot_name, dbinfo->dbname);
 
-	appendPQExpBuffer(str, "CREATE_REPLICATION_SLOT \"%s\"", slot_name);
-	if (transient_replslot)
-		appendPQExpBufferStr(str, " TEMPORARY");
-	appendPQExpBufferStr(str, " LOGICAL \"pgoutput\" NOEXPORT_SNAPSHOT");
+	appendPQExpBuffer(str, "SELECT lsn FROM pg_create_logical_replication_slot('%s', '%s', %s, false, false)",
+			slot_name, "pgoutput", transient_replslot ? "true" : "false");
 
 	pg_log_debug("command is: %s", str->data);
 
@@ -960,7 +953,7 @@ create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
 
 	if (!dry_run)
 	{
-		lsn = pg_strdup(PQgetvalue(res, 0, 1));
+		lsn = pg_strdup(PQgetvalue(res, 0, 0));
 		PQclear(res);
 	}
 
@@ -979,7 +972,7 @@ drop_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo, const char *slot_nam
 
 	pg_log_info("dropping the replication slot \"%s\" on database \"%s\"", slot_name, dbinfo->dbname);
 
-	appendPQExpBuffer(str, "DROP_REPLICATION_SLOT \"%s\"", slot_name);
+	appendPQExpBuffer(str, "SELECT pg_drop_replication_slot('%s')", slot_name);
 
 	pg_log_debug("command is: %s", str->data);
 
