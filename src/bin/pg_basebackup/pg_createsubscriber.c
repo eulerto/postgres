@@ -772,6 +772,21 @@ check_subscriber(LogicalRepInfo *dbinfo)
 	if (conn == NULL)
 		exit(1);
 
+	/* The target server must be a standby */
+	res = PQexec(conn, "SELECT pg_catalog.pg_is_in_recovery()");
+
+	if (PQresultStatus(res) != PGRES_TUPLES_OK)
+	{
+		pg_log_error("could not obtain recovery progress");
+		return false;
+	}
+
+	if (strcmp(PQgetvalue(res, 0, 0), "t") != 0)
+	{
+		pg_log_error("The target server is not a standby");
+		return false;
+	}
+
 	/*
 	 * Subscriptions can only be created by roles that have the privileges of
 	 * pg_create_subscription role and CREATE privileges on the specified
