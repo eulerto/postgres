@@ -783,6 +783,12 @@ check_subscriber(LogicalRepInfo *dbinfo)
 
 	res = PQexec(conn, str->data);
 
+	if (PQresultStatus(res) != PGRES_TUPLES_OK)
+	{
+		pg_log_error("could not obtain access privilege information: %s", PQresultErrorMessage(res));
+		return false;
+	}
+
 	if (strcmp(PQgetvalue(res, 0, 0), "t") != 0)
 	{
 		pg_log_error("permission denied to create subscription");
@@ -798,12 +804,6 @@ check_subscriber(LogicalRepInfo *dbinfo)
 	if (strcmp(PQgetvalue(res, 0, 1), "t") != 0)
 	{
 		pg_log_error("permission denied for function \"%s\"", "pg_catalog.pg_replication_origin_advance(text, pg_lsn)");
-		return false;
-	}
-
-	if (PQresultStatus(res) != PGRES_TUPLES_OK)
-	{
-		pg_log_error("could not obtain access privilege information: %s", PQresultErrorMessage(res));
 		return false;
 	}
 
@@ -983,7 +983,7 @@ drop_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo, const char *slot_nam
 	if (!dry_run)
 	{
 		res = PQexec(conn, str->data);
-		if (PQresultStatus(res) != PGRES_COMMAND_OK)
+		if (PQresultStatus(res) != PGRES_TUPLES_OK)
 			pg_log_error("could not drop replication slot \"%s\" on database \"%s\": %s", slot_name, dbinfo->dbname,
 						 PQerrorMessage(conn));
 
