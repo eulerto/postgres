@@ -1494,7 +1494,7 @@ main(int argc, char **argv)
 		{NULL, 0, NULL, 0}
 	};
 
-	CreateSubscriberOptions opt;
+	CreateSubscriberOptions opt = {0};
 
 	int			c;
 	int			option_index;
@@ -1535,8 +1535,6 @@ main(int argc, char **argv)
 			exit(0);
 		}
 	}
-
-	memset(&opt, 0, sizeof(CreateSubscriberOptions));
 
 	/* Default settings */
 	opt.subscriber_dir = NULL;
