@@ -78,7 +78,7 @@ static bool setup_publisher(LogicalRepInfo *dbinfo);
 static bool check_subscriber(LogicalRepInfo *dbinfo);
 static bool setup_subscriber(LogicalRepInfo *dbinfo, const char *consistent_lsn);
 static char *create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
-											 char *slot_name);
+											 bool temporary);
 static void drop_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo, const char *slot_name);
 static char *setup_server_logfile(const char *datadir);
 static void start_standby_server(const char *pg_ctl_path, const char *datadir, const char *logfile);
@@ -622,7 +622,7 @@ setup_publisher(LogicalRepInfo *dbinfo)
 		dbinfo[i].subname = pg_strdup(replslotname);
 
 		/* Create replication slot on publisher. */
-		if (create_logical_replication_slot(conn, &dbinfo[i], replslotname) != NULL || dry_run)
+		if (create_logical_replication_slot(conn, &dbinfo[i], false) != NULL || dry_run)
 			pg_log_info("create replication slot \"%s\" on publisher", replslotname);
 		else
 			return false;
@@ -905,38 +905,39 @@ setup_subscriber(LogicalRepInfo *dbinfo, const char *consistent_lsn)
 }
 
 /*
- * Create a logical replication slot and returns a consistent LSN. The returned
- * LSN might be used to catch up the subscriber up to the required point.
+ * Create a logical replication slot and returns a LSN.
  *
  * CreateReplicationSlot() is not used because it does not provide the one-row
- * result set that contains the consistent LSN.
+ * result set that contains the LSN.
  */
 static char *
 create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
-								char *slot_name)
+								bool temporary)
 {
 	PQExpBuffer str = createPQExpBuffer();
 	PGresult   *res = NULL;
+	char	   slot_name[NAMEDATALEN];
 	char	   *lsn = NULL;
-	bool		transient_replslot = false;
 
 	Assert(conn != NULL);
 
 	/*
-	 * If no slot name is informed, it is a transient replication slot used
-	 * only for catch up purposes.
+	 * This temporary replication slot is only used for catchup purposes.
 	 */
-	if (slot_name[0] == '\0')
+	if (temporary)
 	{
 		snprintf(slot_name, NAMEDATALEN, "pg_createsubscriber_%d_startpoint",
 				 (int) getpid());
-		transient_replslot = true;
+	}
+	else
+	{
+		snprintf(slot_name, NAMEDATALEN, "%s", dbinfo->subname);
 	}
 
 	pg_log_info("creating the replication slot \"%s\" on database \"%s\"", slot_name, dbinfo->dbname);
 
 	appendPQExpBuffer(str, "SELECT lsn FROM pg_create_logical_replication_slot('%s', '%s', %s, false, false)",
-					  slot_name, "pgoutput", transient_replslot ? "true" : "false");
+					  slot_name, "pgoutput", temporary ? "true" : "false");
 
 	pg_log_debug("command is: %s", str->data);
 
@@ -952,7 +953,7 @@ create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
 	}
 
 	/* for cleanup purposes */
-	if (!transient_replslot)
+	if (!temporary)
 		dbinfo->made_replslot = true;
 
 	if (!dry_run)
@@ -1503,7 +1504,6 @@ main(int argc, char **argv)
 	char	   *pub_base_conninfo = NULL;
 	char	   *sub_base_conninfo = NULL;
 	char	   *dbname_conninfo = NULL;
-	char		temp_replslot[NAMEDATALEN] = {0};
 
 	uint64		pub_sysid;
 	uint64		sub_sysid;
@@ -1775,8 +1775,7 @@ main(int argc, char **argv)
 	conn = connect_database(dbinfo[0].pubconninfo);
 	if (conn == NULL)
 		exit(1);
-	consistent_lsn = create_logical_replication_slot(conn, &dbinfo[0],
-													 temp_replslot);
+	consistent_lsn = create_logical_replication_slot(conn, &dbinfo[0], true);
 
 	/*
 	 * Write recovery parameters.
