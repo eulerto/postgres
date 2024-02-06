@@ -240,8 +240,9 @@ get_base_conninfo(char *conninfo, char *dbname, const char *noderole)
 }
 
 /*
- * Get the absolute path from other PostgreSQL binaries (pg_ctl and
- * pg_resetwal) that is used by it.
+ * Get the directory that the pg_createsubscriber is in. Since it uses other
+ * PostgreSQL binaries (pg_ctl and pg_resetwal), the directory is used to build
+ * the full path for it.
  */
 static char *
 get_bin_directory(const char *path)
@@ -266,69 +267,12 @@ get_bin_directory(const char *path)
 	dirname = pg_malloc(MAXPGPATH);
 	sep = strrchr(full_path, 'p');
 	Assert(sep != NULL);
-	sep --;
-	strlcpy(dirname, full_path, sep - full_path + 1);
+	strlcpy(dirname, full_path, sep - full_path);
 
 	pg_log_debug("pg_ctl path is:  %s/%s", dirname, "pg_ctl");
 	pg_log_debug("pg_resetwal path is:  %s/%s", dirname, "pg_resetwal");
 
 	return dirname;
-
-#ifdef _NOT_USED
-	int			rc;
-
-	pg_ctl_path = pg_malloc(MAXPGPATH);
-	rc = find_other_exec(path, "pg_ctl",
-						 "pg_ctl (PostgreSQL) " PG_VERSION "\n",
-						 pg_ctl_path);
-	if (rc < 0)
-	{
-		char		full_path[MAXPGPATH];
-
-		if (find_my_exec(path, full_path) < 0)
-			strlcpy(full_path, progname, sizeof(full_path));
-		if (rc == -1)
-			pg_log_error("The program \"%s\" is needed by %s but was not found in the\n"
-						 "same directory as \"%s\".\n"
-						 "Check your installation.",
-						 "pg_ctl", progname, full_path);
-		else
-			pg_log_error("The program \"%s\" was found by \"%s\"\n"
-						 "but was not the same version as %s.\n"
-						 "Check your installation.",
-						 "pg_ctl", full_path, progname);
-		return false;
-	}
-
-	pg_log_debug("pg_ctl path is: %s", pg_ctl_path);
-
-	pg_resetwal_path = pg_malloc(MAXPGPATH);
-	rc = find_other_exec(path, "pg_resetwal",
-						 "pg_resetwal (PostgreSQL) " PG_VERSION "\n",
-						 pg_resetwal_path);
-	if (rc < 0)
-	{
-		char		full_path[MAXPGPATH];
-
-		if (find_my_exec(path, full_path) < 0)
-			strlcpy(full_path, progname, sizeof(full_path));
-		if (rc == -1)
-			pg_log_error("The program \"%s\" is needed by %s but was not found in the\n"
-						 "same directory as \"%s\".\n"
-						 "Check your installation.",
-						 "pg_resetwal", progname, full_path);
-		else
-			pg_log_error("The program \"%s\" was found by \"%s\"\n"
-						 "but was not the same version as %s.\n"
-						 "Check your installation.",
-						 "pg_resetwal", full_path, progname);
-		return false;
-	}
-
-	pg_log_debug("pg_resetwal path is: %s", pg_resetwal_path);
-
-	return true;
-#endif
 }
 
 /*
