@@ -37,12 +37,12 @@
 /* Command-line options */
 typedef struct CreateSubscriberOptions
 {
-	char	   *subscriber_dir;			/* standby/subscriber data directory */
-	char	   *pub_conninfo_str;		/* publisher connection string */
-	char	   *sub_conninfo_str;		/* subscriber connection string */
+	char	   *subscriber_dir; /* standby/subscriber data directory */
+	char	   *pub_conninfo_str;	/* publisher connection string */
+	char	   *sub_conninfo_str;	/* subscriber connection string */
 	SimpleStringList database_names;	/* list of database names */
-	bool		retain;					/* retain log file? */
-	int			recovery_timeout;		/* stop recovery after this time */
+	bool		retain;			/* retain log file? */
+	int			recovery_timeout;	/* stop recovery after this time */
 } CreateSubscriberOptions;
 
 typedef struct LogicalRepInfo
@@ -899,7 +899,7 @@ create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
 {
 	PQExpBuffer str = createPQExpBuffer();
 	PGresult   *res = NULL;
-	char	   slot_name[NAMEDATALEN];
+	char		slot_name[NAMEDATALEN];
 	char	   *lsn = NULL;
 
 	Assert(conn != NULL);
@@ -1769,11 +1769,10 @@ main(int argc, char **argv)
 	 * connection is only used to check the current server version (physical
 	 * replica, same server version). The subscriber is not running yet. In
 	 * dry run mode, the recovery parameters *won't* be written. An invalid
-	 * LSN is used for printing purposes.
-	 * Additional recovery parameters are added here. It avoids unexpected
-	 * behavior such as end of recovery as soon as a consistent state is
-	 * reached (recovery_target) and failure due to multiple recovery targets
-	 * (name, time, xid, LSN).
+	 * LSN is used for printing purposes. Additional recovery parameters are
+	 * added here. It avoids unexpected behavior such as end of recovery as
+	 * soon as a consistent state is reached (recovery_target) and failure due
+	 * to multiple recovery targets (name, time, xid, LSN).
 	 */
 	recoveryconfcontents = GenerateRecoveryConfig(conn, NULL);
 	appendPQExpBuffer(recoveryconfcontents, "recovery_target = ''\n");
