@@ -71,7 +71,7 @@ static PGconn *connect_database(const char *conninfo);
 static void disconnect_database(PGconn *conn);
 static uint64 get_primary_sysid(const char *conninfo);
 static uint64 get_standby_sysid(const char *datadir);
-static void modify_subscriber_sysid(const char *pg_bin_dir, CreateSubscriberOptions opt);
+static void modify_subscriber_sysid(const char *pg_bin_dir, CreateSubscriberOptions *opt);
 static bool check_publisher(LogicalRepInfo *dbinfo);
 static bool setup_publisher(LogicalRepInfo *dbinfo);
 static bool check_subscriber(LogicalRepInfo *dbinfo);
@@ -83,7 +83,7 @@ static char *setup_server_logfile(const char *datadir);
 static void start_standby_server(const char *pg_bin_dir, const char *datadir, const char *logfile);
 static void stop_standby_server(const char *pg_bin_dir, const char *datadir);
 static void pg_ctl_status(const char *pg_ctl_cmd, int rc, int action);
-static void wait_for_end_recovery(const char *conninfo, const char *pg_bin_dir, CreateSubscriberOptions opt);
+static void wait_for_end_recovery(const char *conninfo, const char *pg_bin_dir, CreateSubscriberOptions *opt);
 static void create_publication(PGconn *conn, LogicalRepInfo *dbinfo);
 static void drop_publication(PGconn *conn, LogicalRepInfo *dbinfo);
 static void create_subscription(PGconn *conn, LogicalRepInfo *dbinfo);
@@ -473,7 +473,7 @@ get_standby_sysid(const char *datadir)
  * files from one of the systems might be used in the other one.
  */
 static void
-modify_subscriber_sysid(const char *pg_bin_dir, CreateSubscriberOptions opt)
+modify_subscriber_sysid(const char *pg_bin_dir, CreateSubscriberOptions *opt)
 {
 	ControlFileData *cf;
 	bool		crc_ok;
@@ -484,7 +484,7 @@ modify_subscriber_sysid(const char *pg_bin_dir, CreateSubscriberOptions opt)
 
 	pg_log_info("modifying system identifier from subscriber");
 
-	cf = get_controlfile(opt.subscriber_dir, &crc_ok);
+	cf = get_controlfile(opt->subscriber_dir, &crc_ok);
 	if (!crc_ok)
 		pg_fatal("control file appears to be corrupt");
 
@@ -499,13 +499,13 @@ modify_subscriber_sysid(const char *pg_bin_dir, CreateSubscriberOptions opt)
 	cf->system_identifier |= getpid() & 0xFFF;
 
 	if (!dry_run)
-		update_controlfile(opt.subscriber_dir, cf, true);
+		update_controlfile(opt->subscriber_dir, cf, true);
 
 	pg_log_info("system identifier is %llu on subscriber", (unsigned long long) cf->system_identifier);
 
 	pg_log_info("running pg_resetwal on the subscriber");
 
-	cmd_str = psprintf("\"%s/pg_resetwal\" -D \"%s\" > \"%s\"", pg_bin_dir, opt.subscriber_dir, DEVNULL);
+	cmd_str = psprintf("\"%s/pg_resetwal\" -D \"%s\" > \"%s\"", pg_bin_dir, opt->subscriber_dir, DEVNULL);
 
 	pg_log_debug("command is: %s", cmd_str);
 
@@ -1085,7 +1085,7 @@ pg_ctl_status(const char *pg_ctl_cmd, int rc, int action)
  * the recovery process. By default, it waits forever.
  */
 static void
-wait_for_end_recovery(const char *conninfo, const char *pg_bin_dir, CreateSubscriberOptions opt)
+wait_for_end_recovery(const char *conninfo, const char *pg_bin_dir, CreateSubscriberOptions *opt)
 {
 	PGconn	   *conn;
 	PGresult   *res;
@@ -1127,9 +1127,9 @@ wait_for_end_recovery(const char *conninfo, const char *pg_bin_dir, CreateSubscr
 		/*
 		 * Bail out after recovery_timeout seconds if this option is set.
 		 */
-		if (opt.recovery_timeout > 0 && timer >= opt.recovery_timeout)
+		if (opt->recovery_timeout > 0 && timer >= opt->recovery_timeout)
 		{
-			stop_standby_server(pg_bin_dir, opt.subscriber_dir);
+			stop_standby_server(pg_bin_dir, opt->subscriber_dir);
 			pg_fatal("recovery timed out");
 		}
 
@@ -1808,7 +1808,7 @@ main(int argc, char **argv)
 	/*
 	 * Waiting the subscriber to be promoted.
 	 */
-	wait_for_end_recovery(dbinfo[0].subconninfo, pg_bin_dir, opt);
+	wait_for_end_recovery(dbinfo[0].subconninfo, pg_bin_dir, &opt);
 
 	/*
 	 * Create the subscription for each database on subscriber. It does not
@@ -1850,7 +1850,7 @@ main(int argc, char **argv)
 	/*
 	 * Change system identifier from subscriber.
 	 */
-	modify_subscriber_sysid(pg_bin_dir, opt);
+	modify_subscriber_sysid(pg_bin_dir, &opt);
 
 	/*
 	 * The log file is kept if retain option is specified or this tool does
