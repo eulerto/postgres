@@ -1766,15 +1766,24 @@ main(int argc, char **argv)
 	 * Write recovery parameters.
 	 *
 	 * Despite of the recovery parameters will be written to the subscriber,
-	 * use a publisher connection for the follwing recovery functions. The
+	 * use a publisher connection for the following recovery functions. The
 	 * connection is only used to check the current server version (physical
 	 * replica, same server version). The subscriber is not running yet. In
 	 * dry run mode, the recovery parameters *won't* be written. An invalid
 	 * LSN is used for printing purposes.
+	 * Additional recovery parameters are added here. It avoids unexpected
+	 * behavior such as end of recovery as soon as a consistent state is
+	 * reached (recovery_target) and failure due to multiple recovery targets
+	 * (name, time, xid, LSN).
 	 */
 	recoveryconfcontents = GenerateRecoveryConfig(conn, NULL);
+	appendPQExpBuffer(recoveryconfcontents, "recovery_target = ''\n");
+	appendPQExpBuffer(recoveryconfcontents, "recovery_target_timeline = 'latest'\n");
 	appendPQExpBuffer(recoveryconfcontents, "recovery_target_inclusive = true\n");
 	appendPQExpBuffer(recoveryconfcontents, "recovery_target_action = promote\n");
+	appendPQExpBuffer(recoveryconfcontents, "recovery_target_name = ''\n");
+	appendPQExpBuffer(recoveryconfcontents, "recovery_target_time = ''\n");
+	appendPQExpBuffer(recoveryconfcontents, "recovery_target_xid = ''\n");
 
 	if (dry_run)
 	{
