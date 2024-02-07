@@ -62,8 +62,7 @@ typedef struct LogicalRepInfo
 
 static void cleanup_objects_atexit(void);
 static void usage();
-static char *get_base_conninfo(char *conninfo, char *dbname,
-							   const char *noderole);
+static char *get_base_conninfo(char *conninfo, char *dbname);
 static char *get_bin_directory(const char *path);
 static bool check_data_directory(const char *datadir);
 static char *concat_conninfo_dbname(const char *conninfo, const char *dbname);
@@ -194,7 +193,7 @@ usage(void)
  * dbname.
  */
 static char *
-get_base_conninfo(char *conninfo, char *dbname, const char *noderole)
+get_base_conninfo(char *conninfo, char *dbname)
 {
 	PQExpBuffer buf = createPQExpBuffer();
 	PQconninfoOption *conn_opts = NULL;
@@ -202,8 +201,6 @@ get_base_conninfo(char *conninfo, char *dbname, const char *noderole)
 	char	   *errmsg = NULL;
 	char	   *ret;
 	int			i;
-
-	pg_log_info("validating connection string on %s", noderole);
 
 	conn_opts = PQconninfoParse(conninfo, &errmsg);
 	if (conn_opts == NULL)
@@ -1629,8 +1626,8 @@ main(int argc, char **argv)
 		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 		exit(1);
 	}
-	pub_base_conninfo = get_base_conninfo(opt.pub_conninfo_str, dbname_conninfo,
-										  "publisher");
+	pg_log_info("validating connection string on publisher");
+	pub_base_conninfo = get_base_conninfo(opt.pub_conninfo_str, dbname_conninfo);
 	if (pub_base_conninfo == NULL)
 		exit(1);
 
@@ -1640,7 +1637,8 @@ main(int argc, char **argv)
 		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 		exit(1);
 	}
-	sub_base_conninfo = get_base_conninfo(opt.sub_conninfo_str, NULL, "subscriber");
+	pg_log_info("validating connection string on subscriber");
+	sub_base_conninfo = get_base_conninfo(opt.sub_conninfo_str, NULL);
 	if (sub_base_conninfo == NULL)
 		exit(1);
 
