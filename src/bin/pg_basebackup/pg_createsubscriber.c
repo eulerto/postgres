@@ -1734,7 +1734,8 @@ main(int argc, char **argv)
 		/* Stop the standby server. */
 		pg_log_info("standby is up and running");
 		pg_log_info("stopping the server to start the transformation steps");
-		stop_standby_server(pg_bin_dir, opt.subscriber_dir);
+		if (!dry_run)
+			stop_standby_server(pg_bin_dir, opt.subscriber_dir);
 	}
 	else
 	{
@@ -1803,7 +1804,8 @@ main(int argc, char **argv)
 	 * Start subscriber and wait until accepting connections.
 	 */
 	pg_log_info("starting the subscriber");
-	start_standby_server(pg_bin_dir, opt.subscriber_dir, server_start_log);
+	if (!dry_run)
+		start_standby_server(pg_bin_dir, opt.subscriber_dir, server_start_log);
 
 	/*
 	 * Waiting the subscriber to be promoted.
@@ -1845,7 +1847,8 @@ main(int argc, char **argv)
 	 * Stop the subscriber.
 	 */
 	pg_log_info("stopping the subscriber");
-	stop_standby_server(pg_bin_dir, opt.subscriber_dir);
+	if (!dry_run)
+		stop_standby_server(pg_bin_dir, opt.subscriber_dir);
 
 	/*
 	 * Change system identifier from subscriber.

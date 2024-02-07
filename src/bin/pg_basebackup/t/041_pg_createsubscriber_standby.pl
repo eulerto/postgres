@@ -75,10 +75,6 @@ command_ok(
 	],
 	'run pg_createsubscriber --dry-run on node S');
 
-# PID sets to undefined because subscriber was stopped behind the scenes.
-# Start subscriber
-$node_s->{_pid} = undef;
-$node_s->start;
 # Check if node S is still a standby
 is($node_s->safe_psql('postgres', 'SELECT pg_is_in_recovery()'),
 	't', 'standby is in recovery');
