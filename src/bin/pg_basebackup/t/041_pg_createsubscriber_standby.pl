@@ -23,7 +23,7 @@ $node_p->start;
 # The extra option forces it to initialize a new cluster instead of copying a
 # previously initdb's cluster.
 $node_f = PostgreSQL::Test::Cluster->new('node_f');
-$node_f->init(allows_streaming => 'logical', extra => [ '--no-instructions' ]);
+$node_f->init(allows_streaming => 'logical', extra => ['--no-instructions']);
 $node_f->start;
 
 # On node P
@@ -66,12 +66,13 @@ command_fails(
 # dry run mode on node S
 command_ok(
 	[
-		'pg_createsubscriber', '--verbose', '--dry-run',
-		'--pgdata', $node_s->data_dir,
-		'--publisher-server', $node_p->connstr('pg1'),
-		'--subscriber-server', $node_s->connstr('pg1'),
-		'--database', 'pg1',
-		'--database', 'pg2'
+		'pg_createsubscriber', '--verbose',
+		'--dry-run', '--pgdata',
+		$node_s->data_dir, '--publisher-server',
+		$node_p->connstr('pg1'), '--subscriber-server',
+		$node_s->connstr('pg1'), '--database',
+		'pg1', '--database',
+		'pg2'
 	],
 	'run pg_createsubscriber --dry-run on node S');
 
@@ -120,12 +121,13 @@ third row),
 
 # Check result on database pg2
 $result = $node_s->safe_psql('pg2', 'SELECT * FROM tbl2');
-is( $result, qq(row 1),
-	'logical replication works on database pg2');
+is($result, qq(row 1), 'logical replication works on database pg2');
 
 # Different system identifier?
-my $sysid_p = $node_p->safe_psql('postgres', 'SELECT system_identifier FROM pg_control_system()');
-my $sysid_s = $node_s->safe_psql('postgres', 'SELECT system_identifier FROM pg_control_system()');
+my $sysid_p = $node_p->safe_psql('postgres',
+	'SELECT system_identifier FROM pg_control_system()');
+my $sysid_s = $node_s->safe_psql('postgres',
+	'SELECT system_identifier FROM pg_control_system()');
 ok($sysid_p != $sysid_s, 'system identifier was changed');
 
 # clean up

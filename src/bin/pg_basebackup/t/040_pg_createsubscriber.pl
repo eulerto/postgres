@@ -18,23 +18,18 @@ my $datadir = PostgreSQL::Test::Utils::tempdir;
 command_fails(['pg_createsubscriber'],
 	'no subscriber data directory specified');
 command_fails(
-	[
-		'pg_createsubscriber',
-		'--pgdata', $datadir
-	],
+	[ 'pg_createsubscriber', '--pgdata', $datadir ],
 	'no publisher connection string specified');
 command_fails(
 	[
-		'pg_createsubscriber',
-		'--dry-run',
+		'pg_createsubscriber', '--dry-run',
 		'--pgdata', $datadir,
 		'--publisher-server', 'dbname=postgres'
 	],
 	'no subscriber connection string specified');
 command_fails(
 	[
-		'pg_createsubscriber',
-		'--verbose',
+		'pg_createsubscriber', '--verbose',
 		'--pgdata', $datadir,
 		'--publisher-server', 'dbname=postgres',
 		'--subscriber-server', 'dbname=postgres'
