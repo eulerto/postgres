@@ -13,6 +13,7 @@ my $node_p;
 my $node_f;
 my $node_s;
 my $result;
+my $slotname;
 
 # Set up node P as primary
 $node_p = PostgreSQL::Test::Cluster->new('node_p');
@@ -21,7 +22,7 @@ $node_p->start;
 
 # Set up node F as about-to-fail node
 # The extra option forces it to initialize a new cluster instead of copying a
-# previously initdb's cluster.
+# previously initdb'd cluster.
 $node_f = PostgreSQL::Test::Cluster->new('node_f');
 $node_f->init(allows_streaming => 'logical', extra => ['--no-instructions']);
 $node_f->start;
@@ -30,6 +31,7 @@ $node_f->start;
 # - create databases
 # - create test tables
 # - insert a row
+# - create a physical replication slot
 $node_p->safe_psql(
 	'postgres', q(
 	CREATE DATABASE pg1;
@@ -38,18 +40,20 @@ $node_p->safe_psql(
 $node_p->safe_psql('pg1', 'CREATE TABLE tbl1 (a text)');
 $node_p->safe_psql('pg1', "INSERT INTO tbl1 VALUES('first row')");
 $node_p->safe_psql('pg2', 'CREATE TABLE tbl2 (a text)');
+$slotname = 'physical_slot';
+$node_p->safe_psql('pg2',
+	"SELECT pg_create_physical_replication_slot('$slotname')");
 
 # Set up node S as standby linking to node P
 $node_p->backup('backup_1');
 $node_s = PostgreSQL::Test::Cluster->new('node_s');
 $node_s->init_from_backup($node_p, 'backup_1', has_streaming => 1);
-$node_s->append_conf('postgresql.conf', 'log_min_messages = debug2');
+$node_s->append_conf(
+	'postgresql.conf', qq[
+log_min_messages = debug2
+primary_slot_name = '$slotname'
+]);
 $node_s->set_standby_mode();
-$node_s->start;
-
-# Insert another row on node P and wait node S to catch up
-$node_p->safe_psql('pg1', "INSERT INTO tbl1 VALUES('second row')");
-$node_p->wait_for_replay_catchup($node_s);
 
 # Run pg_createsubscriber on about-to-fail node F
 command_fails(
@@ -62,6 +66,25 @@ command_fails(
 		'--database', 'pg2'
 	],
 	'subscriber data directory is not a copy of the source database cluster');
+
+# Run pg_createsubscriber on the stopped node
+command_fails(
+	[
+		'pg_createsubscriber', '--verbose',
+		'--dry-run', '--pgdata',
+		$node_s->data_dir, '--publisher-server',
+		$node_p->connstr('pg1'), '--subscriber-server',
+		$node_s->connstr('pg1'), '--database',
+		'pg1', '--database',
+		'pg2'
+	],
+	'target server must be running');
+
+$node_s->start;
+
+# Insert another row on node P and wait node S to catch up
+$node_p->safe_psql('pg1', "INSERT INTO tbl1 VALUES('second row')");
+$node_p->wait_for_replay_catchup($node_s);
 
 # dry run mode on node S
 command_ok(
@@ -80,6 +103,17 @@ command_ok(
 is($node_s->safe_psql('postgres', 'SELECT pg_is_in_recovery()'),
 	't', 'standby is in recovery');
 
+# pg_createsubscriber can run without --databases option
+command_ok(
+	[
+		'pg_createsubscriber', '--verbose',
+		'--dry-run', '--pgdata',
+		$node_s->data_dir, '--publisher-server',
+		$node_p->connstr('pg1'), '--subscriber-server',
+		$node_s->connstr('pg1')
+	],
+	'run pg_createsubscriber without --databases');
+
 # Run pg_createsubscriber on node S
 command_ok(
 	[
@@ -91,6 +125,18 @@ command_ok(
 		'--database', 'pg2'
 	],
 	'run pg_createsubscriber on node S');
+
+ok( -d $node_s->data_dir . "/pg_createsubscriber_output.d",
+	"pg_createsubscriber_output.d/ removed after pg_createsubscriber success"
+);
+
+# Confirm the physical replication slot has been removed
+$result = $node_p->safe_psql('pg1',
+	"SELECT count(*) FROM pg_replication_slots WHERE slot_name = '$slotname'"
+);
+is($result, qq(0),
+	'the physical replication slot used as primary_slot_name has been removed'
+);
 
 # Insert rows on P
 $node_p->safe_psql('pg1', "INSERT INTO tbl1 VALUES('third row')");
