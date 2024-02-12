@@ -61,7 +61,7 @@ typedef struct LogicalRepInfo
 
 static void cleanup_objects_atexit(void);
 static void usage();
-static char *get_base_conninfo(char *conninfo, char *dbname);
+static char *get_base_conninfo(char *conninfo, char **dbname);
 static char *get_bin_directory(const char *path);
 static bool check_data_directory(const char *datadir);
 static char *concat_conninfo_dbname(const char *conninfo, const char *dbname);
@@ -204,7 +204,7 @@ usage(void)
  * dbname.
  */
 static char *
-get_base_conninfo(char *conninfo, char *dbname)
+get_base_conninfo(char *conninfo, char **dbname)
 {
 	PQExpBuffer buf = createPQExpBuffer();
 	PQconninfoOption *conn_opts = NULL;
@@ -226,7 +226,7 @@ get_base_conninfo(char *conninfo, char *dbname)
 		if (strcmp(conn_opt->keyword, "dbname") == 0 && conn_opt->val != NULL)
 		{
 			if (dbname)
-				dbname = pg_strdup(conn_opt->val);
+				*dbname = pg_strdup(conn_opt->val);
 			continue;
 		}
 
@@ -1711,8 +1711,10 @@ main(int argc, char **argv)
 		exit(1);
 	}
 	pg_log_info("validating connection string on publisher");
+	pg_log_info("dbname_conninfo (%p)", &dbname_conninfo);
 	pub_base_conninfo = get_base_conninfo(opt.pub_conninfo_str,
-										  dbname_conninfo);
+										  &dbname_conninfo);
+	pg_log_info("dbname_conninfo (%p): %s", dbname_conninfo, dbname_conninfo);
 	if (pub_base_conninfo == NULL)
 		exit(1);
 
