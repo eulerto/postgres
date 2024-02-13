@@ -102,7 +102,6 @@ static void enable_subscription(PGconn *conn, LogicalRepInfo *dbinfo);
 #define	USEC_PER_SEC	1000000
 #define	WAIT_INTERVAL	1		/* 1 second */
 
-/* Options */
 static const char *progname;
 
 static char *primary_slot_name = NULL;
