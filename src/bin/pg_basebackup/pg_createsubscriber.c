@@ -6,31 +6,25 @@
  * Copyright (C) 2024, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
- *		src/bin/pg_basebackup/pg_createsubscriber.c
+ *	  src/bin/pg_basebackup/pg_createsubscriber.c
  *
  *-------------------------------------------------------------------------
  */
+
 #include "postgres_fe.h"
 
-#include <signal.h>
-#include <sys/stat.h>
 #include <sys/time.h>
-#include <sys/wait.h>
 #include <time.h>
 
-#include "access/xlogdefs.h"
 #include "catalog/pg_authid_d.h"
-#include "catalog/pg_control.h"
 #include "common/connect.h"
 #include "common/controldata_utils.h"
 #include "common/file_perm.h"
-#include "common/file_utils.h"
 #include "common/logging.h"
 #include "common/restricted_token.h"
 #include "fe_utils/recovery_gen.h"
 #include "fe_utils/simple_list.h"
 #include "getopt_long.h"
-#include "utils/pidfile.h"
 
 #define	PGS_OUTPUT_DIR	"pg_createsubscriber_output.d"
 
