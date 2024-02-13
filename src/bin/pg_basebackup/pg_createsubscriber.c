@@ -254,17 +254,48 @@ get_base_conninfo(char *conninfo, char **dbname)
 static char *
 get_bin_directory(const char *path)
 {
-	char		full_path[MAXPGPATH];
 	char	   *dirname;
 	char	   *sep;
+	char		pg_ctl_path[MAXPGPATH];
+	char		pg_resetwal_path[MAXPGPATH];
+	int			ret;
 
-	if (find_my_exec(path, full_path) < 0)
+	ret = find_other_exec(path, "pg_ctl",
+						  "pg_ctl (PostgreSQL) " PG_VERSION "\n",
+						  pg_ctl_path);
+
+	if (ret < 0)
 	{
-		pg_log_error("The program \"%s\" is needed by %s but was not found in the\n"
-					 "same directory as \"%s\".\n",
-					 "pg_ctl", progname, full_path);
-		pg_log_error_hint("Check your installation.");
-		exit(1);
+		char		full_path[MAXPGPATH];
+
+		if (find_my_exec(path, full_path) < 0)
+			strlcpy(full_path, progname, sizeof(full_path));
+
+		if (ret == -1)
+			pg_fatal("program \"%s\" is needed by %s but was not found in the same directory as \"%s\"",
+					 "pg_ctl", "pg_createsubscriber", full_path);
+		else
+			pg_fatal("program \"%s\" was found by \"%s\" but was not the same version as %s",
+					 "pg_ctl", full_path, "pg_createsubscriber");
+	}
+
+	ret = find_other_exec(path, "pg_resetwal",
+						  "pg_resetwal (PostgreSQL) " PG_VERSION "\n",
+						  pg_resetwal_path);
+
+	if (ret < 0)
+	{
+		char		full_path[MAXPGPATH];
+
+		if (find_my_exec(path, full_path) < 0)
+			strlcpy(full_path, progname, sizeof(full_path));
+
+		if (ret == -1)
+			pg_fatal("program \"%s\" is needed by %s but was not found in the same directory as \"%s\"",
+					 "pg_resetwal", "pg_createsubscriber", full_path);
+		else
+			pg_fatal("program \"%s\" was found by \"%s\" but was not the same version as %s",
+					 "pg_resetwal", full_path, "pg_createsubscriber");
 	}
 
 	/*
@@ -272,9 +303,9 @@ get_bin_directory(const char *path)
 	 * path for binaries used by this tool.
 	 */
 	dirname = pg_malloc(MAXPGPATH);
-	sep = strrchr(full_path, 'p');
+	sep = strrchr(pg_ctl_path, 'p');
 	Assert(sep != NULL);
-	strlcpy(dirname, full_path, sep - full_path);
+	strlcpy(dirname, pg_ctl_path, sep - pg_ctl_path);
 
 	pg_log_debug("pg_ctl path is:  %s/%s", dirname, "pg_ctl");
 	pg_log_debug("pg_resetwal path is:  %s/%s", dirname, "pg_resetwal");
