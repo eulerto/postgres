@@ -62,7 +62,7 @@ typedef struct LogicalRepInfo
 static void cleanup_objects_atexit(void);
 static void usage();
 static char *get_base_conninfo(char *conninfo, char **dbname);
-static char *get_bin_directory(const char *path);
+static char *get_exec_path(const char *argv0, const char *progname);
 static bool check_data_directory(const char *datadir);
 static char *concat_conninfo_dbname(const char *conninfo, const char *dbname);
 static LogicalRepInfo *store_pub_sub_info(SimpleStringList dbnames,
@@ -72,7 +72,7 @@ static PGconn *connect_database(const char *conninfo);
 static void disconnect_database(PGconn *conn);
 static uint64 get_primary_sysid(const char *conninfo);
 static uint64 get_standby_sysid(const char *datadir);
-static void modify_subscriber_sysid(const char *pg_bin_dir,
+static void modify_subscriber_sysid(const char *pg_resetwal_path,
 									CreateSubscriberOptions *opt);
 static bool check_publisher(LogicalRepInfo *dbinfo);
 static bool setup_publisher(LogicalRepInfo *dbinfo);
@@ -85,11 +85,11 @@ static char *create_logical_replication_slot(PGconn *conn,
 static void drop_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
 								  const char *slot_name);
 static char *setup_server_logfile(const char *datadir);
-static void start_standby_server(const char *pg_bin_dir, const char *datadir,
+static void start_standby_server(const char *pg_ctl_path, const char *datadir,
 								 const char *logfile);
-static void stop_standby_server(const char *pg_bin_dir, const char *datadir);
+static void stop_standby_server(const char *pg_ctl_path, const char *datadir);
 static void pg_ctl_status(const char *pg_ctl_cmd, int rc, int action);
-static void wait_for_end_recovery(const char *conninfo, const char *pg_bin_dir,
+static void wait_for_end_recovery(const char *conninfo, const char *pg_ctl_path,
 								  CreateSubscriberOptions *opt);
 static void create_publication(PGconn *conn, LogicalRepInfo *dbinfo);
 static void drop_publication(PGconn *conn, LogicalRepInfo *dbinfo);
@@ -247,70 +247,39 @@ get_base_conninfo(char *conninfo, char **dbname)
 }
 
 /*
- * Get the directory that the pg_createsubscriber is in. Since it uses other
- * PostgreSQL binaries (pg_ctl and pg_resetwal), the directory is used to build
- * the full path for it.
+ * Verify if a PostgreSQL binary (progname) is available in the same directory as
+ * pg_createsubscriber and it has the same version.  It returns the absolute
+ * path of the progname.
  */
 static char *
-get_bin_directory(const char *path)
+get_exec_path(const char *argv0, const char *progname)
 {
-	char	   *dirname;
-	char	   *sep;
-	char		pg_ctl_path[MAXPGPATH];
-	char		pg_resetwal_path[MAXPGPATH];
+	char	   *versionstr;
+	char	   *exec_path;
 	int			ret;
 
-	ret = find_other_exec(path, "pg_ctl",
-						  "pg_ctl (PostgreSQL) " PG_VERSION "\n",
-						  pg_ctl_path);
+	versionstr = psprintf("%s (PostgreSQL) %s\n", progname, PG_VERSION);
+	exec_path = pg_malloc(MAXPGPATH);
+	ret = find_other_exec(argv0, progname, versionstr, exec_path);
 
 	if (ret < 0)
 	{
 		char		full_path[MAXPGPATH];
 
-		if (find_my_exec(path, full_path) < 0)
+		if (find_my_exec(argv0, full_path) < 0)
 			strlcpy(full_path, progname, sizeof(full_path));
 
 		if (ret == -1)
 			pg_fatal("program \"%s\" is needed by %s but was not found in the same directory as \"%s\"",
-					 "pg_ctl", "pg_createsubscriber", full_path);
+					 progname, "pg_createsubscriber", full_path);
 		else
 			pg_fatal("program \"%s\" was found by \"%s\" but was not the same version as %s",
-					 "pg_ctl", full_path, "pg_createsubscriber");
+					 progname, full_path, "pg_createsubscriber");
 	}
 
-	ret = find_other_exec(path, "pg_resetwal",
-						  "pg_resetwal (PostgreSQL) " PG_VERSION "\n",
-						  pg_resetwal_path);
+	pg_log_debug("%s path is:  %s", progname, exec_path);
 
-	if (ret < 0)
-	{
-		char		full_path[MAXPGPATH];
-
-		if (find_my_exec(path, full_path) < 0)
-			strlcpy(full_path, progname, sizeof(full_path));
-
-		if (ret == -1)
-			pg_fatal("program \"%s\" is needed by %s but was not found in the same directory as \"%s\"",
-					 "pg_resetwal", "pg_createsubscriber", full_path);
-		else
-			pg_fatal("program \"%s\" was found by \"%s\" but was not the same version as %s",
-					 "pg_resetwal", full_path, "pg_createsubscriber");
-	}
-
-	/*
-	 * Strip the file name from the path. It will be used to build the full
-	 * path for binaries used by this tool.
-	 */
-	dirname = pg_malloc(MAXPGPATH);
-	sep = strrchr(pg_ctl_path, 'p');
-	Assert(sep != NULL);
-	strlcpy(dirname, pg_ctl_path, sep - pg_ctl_path);
-
-	pg_log_debug("pg_ctl path is:  %s/%s", dirname, "pg_ctl");
-	pg_log_debug("pg_resetwal path is:  %s/%s", dirname, "pg_resetwal");
-
-	return dirname;
+	return exec_path;
 }
 
 /*
@@ -521,7 +490,7 @@ get_standby_sysid(const char *datadir)
  * files from one of the systems might be used in the other one.
  */
 static void
-modify_subscriber_sysid(const char *pg_bin_dir, CreateSubscriberOptions *opt)
+modify_subscriber_sysid(const char *pg_resetwal_path, CreateSubscriberOptions *opt)
 {
 	ControlFileData *cf;
 	bool		crc_ok;
@@ -554,7 +523,7 @@ modify_subscriber_sysid(const char *pg_bin_dir, CreateSubscriberOptions *opt)
 
 	pg_log_info("running pg_resetwal on the subscriber");
 
-	cmd_str = psprintf("\"%s/pg_resetwal\" -D \"%s\" > \"%s\"", pg_bin_dir,
+	cmd_str = psprintf("\"%s\" -D \"%s\" > \"%s\"", pg_resetwal_path,
 					   opt->subscriber_dir, DEVNULL);
 
 	pg_log_debug("command is: %s", cmd_str);
@@ -1118,25 +1087,25 @@ setup_server_logfile(const char *datadir)
 }
 
 static void
-start_standby_server(const char *pg_bin_dir, const char *datadir,
+start_standby_server(const char *pg_ctl_path, const char *datadir,
 					 const char *logfile)
 {
 	char	   *pg_ctl_cmd;
 	int			rc;
 
-	pg_ctl_cmd = psprintf("\"%s/pg_ctl\" start -D \"%s\" -s -l \"%s\"",
-						  pg_bin_dir, datadir, logfile);
+	pg_ctl_cmd = psprintf("\"%s\" start -D \"%s\" -s -l \"%s\"",
+						  pg_ctl_path, datadir, logfile);
 	rc = system(pg_ctl_cmd);
 	pg_ctl_status(pg_ctl_cmd, rc, 1);
 }
 
 static void
-stop_standby_server(const char *pg_bin_dir, const char *datadir)
+stop_standby_server(const char *pg_ctl_path, const char *datadir)
 {
 	char	   *pg_ctl_cmd;
 	int			rc;
 
-	pg_ctl_cmd = psprintf("\"%s/pg_ctl\" stop -D \"%s\" -s", pg_bin_dir,
+	pg_ctl_cmd = psprintf("\"%s\" stop -D \"%s\" -s", pg_ctl_path,
 						  datadir);
 	rc = system(pg_ctl_cmd);
 	pg_ctl_status(pg_ctl_cmd, rc, 0);
@@ -1187,7 +1156,7 @@ pg_ctl_status(const char *pg_ctl_cmd, int rc, int action)
  * the recovery process. By default, it waits forever.
  */
 static void
-wait_for_end_recovery(const char *conninfo, const char *pg_bin_dir,
+wait_for_end_recovery(const char *conninfo, const char *pg_ctl_path,
 					  CreateSubscriberOptions *opt)
 {
 	PGconn	   *conn;
@@ -1230,7 +1199,7 @@ wait_for_end_recovery(const char *conninfo, const char *pg_bin_dir,
 		/* Bail out after recovery_timeout seconds if this option is set */
 		if (opt->recovery_timeout > 0 && timer >= opt->recovery_timeout)
 		{
-			stop_standby_server(pg_bin_dir, opt->subscriber_dir);
+			stop_standby_server(pg_ctl_path, opt->subscriber_dir);
 			pg_fatal("recovery timed out");
 		}
 
@@ -1596,7 +1565,8 @@ main(int argc, char **argv)
 	int			c;
 	int			option_index;
 
-	char	   *pg_bin_dir = NULL;
+	char	   *pg_ctl_path = NULL;
+	char	   *pg_resetwal_path = NULL;
 
 	char	   *server_start_log;
 
@@ -1786,7 +1756,8 @@ main(int argc, char **argv)
 	}
 
 	/* Get the absolute path of pg_ctl and pg_resetwal on the subscriber */
-	pg_bin_dir = get_bin_directory(argv[0]);
+	pg_ctl_path = get_exec_path(argv[0], "pg_ctl");
+	pg_resetwal_path = get_exec_path(argv[0], "pg_resetwal");
 
 	/* rudimentary check for a data directory. */
 	if (!check_data_directory(opt.subscriber_dir))
@@ -1848,7 +1819,7 @@ main(int argc, char **argv)
 		pg_log_info("standby is up and running");
 		pg_log_info("stopping the server to start the transformation steps");
 		if (!dry_run)
-			stop_standby_server(pg_bin_dir, opt.subscriber_dir);
+			stop_standby_server(pg_ctl_path, opt.subscriber_dir);
 	}
 	else
 	{
@@ -1919,10 +1890,10 @@ main(int argc, char **argv)
 	/* Start subscriber and wait until accepting connections */
 	pg_log_info("starting the subscriber");
 	if (!dry_run)
-		start_standby_server(pg_bin_dir, opt.subscriber_dir, server_start_log);
+		start_standby_server(pg_ctl_path, opt.subscriber_dir, server_start_log);
 
 	/* Waiting the subscriber to be promoted */
-	wait_for_end_recovery(dbinfo[0].subconninfo, pg_bin_dir, &opt);
+	wait_for_end_recovery(dbinfo[0].subconninfo, pg_ctl_path, &opt);
 
 	/*
 	 * Create the subscription for each database on subscriber. It does not
@@ -1959,10 +1930,10 @@ main(int argc, char **argv)
 	/* Stop the subscriber */
 	pg_log_info("stopping the subscriber");
 	if (!dry_run)
-		stop_standby_server(pg_bin_dir, opt.subscriber_dir);
+		stop_standby_server(pg_ctl_path, opt.subscriber_dir);
 
 	/* Change system identifier from subscriber */
-	modify_subscriber_sysid(pg_bin_dir, &opt);
+	modify_subscriber_sysid(pg_resetwal_path, &opt);
 
 	/*
 	 * The log file is kept if retain option is specified or this tool does
