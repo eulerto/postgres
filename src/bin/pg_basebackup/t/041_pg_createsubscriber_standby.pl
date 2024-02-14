@@ -21,11 +21,15 @@ $node_p->init(allows_streaming => 'logical');
 $node_p->start;
 
 # Set up node F as about-to-fail node
-# The extra option forces it to initialize a new cluster instead of copying a
+# Force it to initialize a new cluster instead of copying a
 # previously initdb'd cluster.
-$node_f = PostgreSQL::Test::Cluster->new('node_f');
-$node_f->init(allows_streaming => 'logical', extra => ['--no-instructions']);
-$node_f->start;
+{
+	local $ENV{'INITDB_TEMPLATE'} = undef;
+
+	$node_f = PostgreSQL::Test::Cluster->new('node_f');
+	$node_f->init(allows_streaming => 'logical');
+	$node_f->start;
+}
 
 # On node P
 # - create databases
