@@ -106,6 +106,8 @@ static bool success = false;
 static LogicalRepInfo *dbinfo;
 static int	num_dbs = 0;
 
+static bool recovery_ended = false;
+
 enum WaitPMResult
 {
 	POSTMASTER_READY,
@@ -134,16 +136,18 @@ cleanup_objects_atexit(void)
 
 	for (i = 0; i < num_dbs; i++)
 	{
-		if (dbinfo[i].made_subscription)
+		conn = connect_database(dbinfo[i].subconninfo);
+		if (conn != NULL)
 		{
-			conn = connect_database(dbinfo[i].subconninfo);
-			if (conn != NULL)
-			{
+			if (dbinfo[i].made_subscription)
 				drop_subscription(conn, &dbinfo[i]);
-				if (dbinfo[i].made_publication)
-					drop_publication(conn, &dbinfo[i]);
-				disconnect_database(conn);
-			}
+			/*
+			 * Publications are created on publisher before promotion so it
+			 * might exist on subscriber after recovery ends.
+			 */
+			if (recovery_ended)
+				drop_publication(conn, &dbinfo[i]);
+			disconnect_database(conn);
 		}
 
 		if (dbinfo[i].made_publication || dbinfo[i].made_replslot)
@@ -1187,6 +1191,7 @@ wait_for_end_recovery(const char *conninfo, const char *pg_ctl_path,
 		if (!in_recovery || dry_run)
 		{
 			status = POSTMASTER_READY;
+			recovery_ended = true;
 			break;
 		}
 
