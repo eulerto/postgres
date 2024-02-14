@@ -175,7 +175,7 @@ usage(void)
 	printf(_(" -P, --publisher-server=CONNSTR      publisher connection string\n"));
 	printf(_(" -S, --subscriber-server=CONNSTR     subscriber connection string\n"));
 	printf(_(" -d, --database=DBNAME               database to create a subscription\n"));
-	printf(_(" -n, --dry-run                       stop before modifying anything\n"));
+	printf(_(" -n, --dry-run                       dry run, just show what would be done\n"));
 	printf(_(" -t, --recovery-timeout=SECS         seconds to wait for recovery to end\n"));
 	printf(_(" -r, --retain                        retain log file after success\n"));
 	printf(_(" -v, --verbose                       output verbose messages\n"));
