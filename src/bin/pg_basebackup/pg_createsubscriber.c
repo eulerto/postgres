@@ -1636,6 +1636,7 @@ main(int argc, char **argv)
 		{
 			case 'D':
 				opt.subscriber_dir = pg_strdup(optarg);
+				canonicalize_path(opt.subscriber_dir);
 				break;
 			case 'P':
 				opt.pub_conninfo_str = pg_strdup(optarg);
