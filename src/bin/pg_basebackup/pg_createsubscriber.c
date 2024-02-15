@@ -647,8 +647,6 @@ server_is_in_recovery(PGconn *conn)
 
 	PQclear(res);
 
-	pg_log_info("ret: %d", ret);
-
 	if (ret == 0)
 		return 1;
 	else if (ret > 0)
@@ -1733,10 +1731,8 @@ main(int argc, char **argv)
 		exit(1);
 	}
 	pg_log_info("validating connection string on publisher");
-	pg_log_info("dbname_conninfo (%p)", &dbname_conninfo);
 	pub_base_conninfo = get_base_conninfo(opt.pub_conninfo_str,
 										  &dbname_conninfo);
-	pg_log_info("dbname_conninfo (%p): %s", dbname_conninfo, dbname_conninfo);
 	if (pub_base_conninfo == NULL)
 		exit(1);
 
