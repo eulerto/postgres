@@ -104,7 +104,7 @@ command_ok(
 	'run pg_createsubscriber --dry-run on node S');
 
 # Check if node S is still a standby
-is($node_s->safe_psql('postgres', 'SELECT pg_is_in_recovery()'),
+is($node_s->safe_psql('postgres', 'SELECT pg_catalog.pg_is_in_recovery()'),
 	't', 'standby is in recovery');
 
 # pg_createsubscriber can run without --databases option
