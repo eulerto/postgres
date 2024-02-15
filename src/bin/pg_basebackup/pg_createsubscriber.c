@@ -728,11 +728,11 @@ check_publisher(LogicalRepInfo *dbinfo)
 
 	PQclear(res);
 
-	pg_log_debug("subscriber: wal_level: %s", wal_level);
-	pg_log_debug("subscriber: max_replication_slots: %d", max_repslots);
-	pg_log_debug("subscriber: current replication slots: %d", cur_repslots);
-	pg_log_debug("subscriber: max_wal_senders: %d", max_walsenders);
-	pg_log_debug("subscriber: current wal senders: %d", cur_walsenders);
+	pg_log_debug("publisher: wal_level: %s", wal_level);
+	pg_log_debug("publisher: max_replication_slots: %d", max_repslots);
+	pg_log_debug("publisher: current replication slots: %d", cur_repslots);
+	pg_log_debug("publisher: max_wal_senders: %d", max_walsenders);
+	pg_log_debug("publisher: current wal senders: %d", cur_walsenders);
 
 	/*
 	 * If standby sets primary_slot_name, check if this replication slot is in
