@@ -111,7 +111,8 @@ command_fails(
 	],
 	'primary server is in recovery');
 
-$node_c->stop;
+# Stop node C
+$node_c->teardown_node;
 
 # Insert another row on node P and wait node S to catch up
 $node_p->safe_psql('pg1', "INSERT INTO tbl1 VALUES('second row')");
@@ -210,6 +211,6 @@ ok($sysid_p != $sysid_s, 'system identifier was changed');
 # clean up
 $node_p->teardown_node;
 $node_s->teardown_node;
-$node_c->teardown_node;
+$node_f->teardown_node;
 
 done_testing();
