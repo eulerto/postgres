@@ -883,11 +883,11 @@ check_subscriber(LogicalRepInfo *dbinfo)
 	 *------------------------------------------------------------------------
 	 */
 	res = PQexec(conn,
-				 "SELECT setting FROM pg_settings WHERE name IN ( "
-				 "       'max_logical_replication_workers', "
-				 "       'max_replication_slots', "
-				 "       'max_worker_processes', "
-				 "       'primary_slot_name') "
+				 "SELECT setting FROM pg_settings WHERE name IN ("
+				 "'max_logical_replication_workers', "
+				 "'max_replication_slots', "
+				 "'max_worker_processes', "
+				 "'primary_slot_name') "
 				 "ORDER BY name");
 
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
