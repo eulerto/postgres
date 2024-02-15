@@ -623,6 +623,27 @@ setup_publisher(LogicalRepInfo *dbinfo)
 }
 
 /*
+ * Is recovery still in progress?
+ */
+static bool
+server_is_in_recovery(PGconn *conn)
+{
+	PGresult   *res;
+
+	res = PQexec(conn, "SELECT pg_catalog.pg_is_in_recovery()");
+
+	if (PQresultStatus(res) != PGRES_TUPLES_OK)
+	{
+		pg_log_error("could not obtain recovery progress");
+		return false;
+	}
+
+	PQclear(res);
+
+	return (strcmp(PQgetvalue(res, 0, 0), "t") == 0);
+}
+
+/*
  * Is the primary server ready for logical replication?
  */
 static bool
@@ -640,6 +661,17 @@ check_publisher(LogicalRepInfo *dbinfo)
 
 	pg_log_info("checking settings on publisher");
 
+	conn = connect_database(dbinfo[0].pubconninfo);
+	if (conn == NULL)
+		exit(1);
+
+	/*
+	 * If the primary server is in recovery (i.e. cascading replication),
+	 * objects (publication) cannot be created because it is read only.
+	 */
+	if (server_is_in_recovery(conn))
+		pg_fatal("primary server cannot be in recovery");
+
 	/*------------------------------------------------------------------------
 	 * Logical replication requires a few parameters to be set on publisher.
 	 * Since these parameters are not a requirement for physical replication,
@@ -650,10 +682,6 @@ check_publisher(LogicalRepInfo *dbinfo)
 	 * - max_wal_senders >= current + number of dbs to be converted
 	 * -----------------------------------------------------------------------
 	 */
-	conn = connect_database(dbinfo[0].pubconninfo);
-	if (conn == NULL)
-		exit(1);
-
 	res = PQexec(conn,
 				 "WITH wl AS "
 				 " (SELECT setting AS wallevel FROM pg_catalog.pg_settings "
