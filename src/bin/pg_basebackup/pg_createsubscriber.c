@@ -14,6 +14,7 @@
 #include "postgres_fe.h"
 
 #include <sys/time.h>
+#include <sys/wait.h>
 #include <time.h>
 
 #include "catalog/pg_authid_d.h"
