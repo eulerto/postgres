@@ -12,6 +12,7 @@ use Test::More;
 my $node_p;
 my $node_f;
 my $node_s;
+my $node_c;
 my $result;
 my $slotname;
 
@@ -85,6 +86,32 @@ command_fails(
 	'target server must be running');
 
 $node_s->start;
+
+# Set up node C as standby linking to node S
+$node_s->backup('backup_2');
+$node_c = PostgreSQL::Test::Cluster->new('node_c');
+$node_c->init_from_backup($node_s, 'backup_2', has_streaming => 1);
+$node_c->append_conf(
+	'postgresql.conf', qq[
+log_min_messages = debug2
+]);
+$node_c->set_standby_mode();
+$node_c->start;
+
+# Run pg_createsubscriber on node C (P -> S -> C)
+command_fails(
+	[
+		'pg_createsubscriber', '--verbose',
+		'--dry-run',
+		'--pgdata',	$node_c->data_dir,
+		'--publisher-server', $node_s->connstr('pg1'),
+		'--subscriber-server', $node_c->connstr('pg1'),
+		'--database', 'pg1',
+		'--database', 'pg2'
+	],
+	'primary server is in recovery');
+
+$node_c->stop;
 
 # Insert another row on node P and wait node S to catch up
 $node_p->safe_psql('pg1', "INSERT INTO tbl1 VALUES('second row')");
@@ -183,5 +210,6 @@ ok($sysid_p != $sysid_s, 'system identifier was changed');
 # clean up
 $node_p->teardown_node;
 $node_s->teardown_node;
+$node_c->teardown_node;
 
 done_testing();
