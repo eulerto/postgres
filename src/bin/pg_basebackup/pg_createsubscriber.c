@@ -69,7 +69,7 @@ static uint64 get_primary_sysid(const char *conninfo);
 static uint64 get_standby_sysid(const char *datadir);
 static void modify_subscriber_sysid(const char *pg_resetwal_path,
 									CreateSubscriberOptions *opt);
-static int server_is_in_recovery(PGconn *conn);
+static int	server_is_in_recovery(PGconn *conn);
 static bool check_publisher(LogicalRepInfo *dbinfo);
 static bool setup_publisher(LogicalRepInfo *dbinfo);
 static bool check_subscriber(LogicalRepInfo *dbinfo);
@@ -143,9 +143,10 @@ cleanup_objects_atexit(void)
 			{
 				if (dbinfo[i].made_subscription)
 					drop_subscription(conn, &dbinfo[i]);
+
 				/*
-				 * Publications are created on publisher before promotion so it
-				 * might exist on subscriber after recovery ends.
+				 * Publications are created on publisher before promotion so
+				 * it might exist on subscriber after recovery ends.
 				 */
 				if (recovery_ended)
 					drop_publication(conn, &dbinfo[i]);
@@ -655,7 +656,7 @@ server_is_in_recovery(PGconn *conn)
 	else if (ret > 0)
 		return 0;
 	else
-		return -1;	/* should not happen */
+		return -1;				/* should not happen */
 }
 
 /*

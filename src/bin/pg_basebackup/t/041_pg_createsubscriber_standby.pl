@@ -63,8 +63,7 @@ $node_s->set_standby_mode();
 # Run pg_createsubscriber on about-to-fail node F
 command_fails(
 	[
-		'pg_createsubscriber',
-		'--verbose',
+		'pg_createsubscriber', '--verbose',
 		'--pgdata', $node_f->data_dir,
 		'--publisher-server', $node_p->connstr('pg1'),
 		'--subscriber-server', $node_f->connstr('pg1'),
@@ -76,13 +75,13 @@ command_fails(
 # Run pg_createsubscriber on the stopped node
 command_fails(
 	[
-		'pg_createsubscriber',
-		'--verbose', '--dry-run',
-		'--pgdata', $node_s->data_dir,
-		'--publisher-server', $node_p->connstr('pg1'),
-		'--subscriber-server', $node_s->connstr('pg1'),
-		'--database', 'pg1',
-		'--database', 'pg2'
+		'pg_createsubscriber', '--verbose',
+		'--dry-run', '--pgdata',
+		$node_s->data_dir, '--publisher-server',
+		$node_p->connstr('pg1'), '--subscriber-server',
+		$node_s->connstr('pg1'), '--database',
+		'pg1', '--database',
+		'pg2'
 	],
 	'target server must be running');
 
@@ -102,13 +101,13 @@ $node_c->start;
 # Run pg_createsubscriber on node C (P -> S -> C)
 command_fails(
 	[
-		'pg_createsubscriber',
-		'--verbose', '--dry-run',
-		'--pgdata', $node_c->data_dir,
-		'--publisher-server', $node_s->connstr('pg1'),
-		'--subscriber-server', $node_c->connstr('pg1'),
-		'--database', 'pg1',
-		'--database', 'pg2'
+		'pg_createsubscriber', '--verbose',
+		'--dry-run', '--pgdata',
+		$node_c->data_dir, '--publisher-server',
+		$node_s->connstr('pg1'), '--subscriber-server',
+		$node_c->connstr('pg1'), '--database',
+		'pg1', '--database',
+		'pg2'
 	],
 	'primary server is in recovery');
 
@@ -122,13 +121,13 @@ $node_p->wait_for_replay_catchup($node_s);
 # dry run mode on node S
 command_ok(
 	[
-		'pg_createsubscriber',
-		'--verbose', '--dry-run',
-		'--pgdata', $node_s->data_dir,
-		'--publisher-server', $node_p->connstr('pg1'),
-		'--subscriber-server', $node_s->connstr('pg1'),
-		'--database', 'pg1',
-		'--database', 'pg2'
+		'pg_createsubscriber', '--verbose',
+		'--dry-run', '--pgdata',
+		$node_s->data_dir, '--publisher-server',
+		$node_p->connstr('pg1'), '--subscriber-server',
+		$node_s->connstr('pg1'), '--database',
+		'pg1', '--database',
+		'pg2'
 	],
 	'run pg_createsubscriber --dry-run on node S');
 
@@ -139,24 +138,24 @@ is($node_s->safe_psql('postgres', 'SELECT pg_catalog.pg_is_in_recovery()'),
 # pg_createsubscriber can run without --databases option
 command_ok(
 	[
-		'pg_createsubscriber',
-		'--verbose', '--dry-run',
-		'--pgdata', $node_s->data_dir,
-		'--publisher-server', $node_p->connstr('pg1'),
-		'--subscriber-server', $node_s->connstr('pg1')
+		'pg_createsubscriber', '--verbose',
+		'--dry-run', '--pgdata',
+		$node_s->data_dir, '--publisher-server',
+		$node_p->connstr('pg1'), '--subscriber-server',
+		$node_s->connstr('pg1')
 	],
 	'run pg_createsubscriber without --databases');
 
 # Run pg_createsubscriber on node S
 command_ok(
 	[
-		'pg_createsubscriber',
-		'--verbose', '--verbose',
-		'--pgdata', $node_s->data_dir,
-		'--publisher-server', $node_p->connstr('pg1'),
-		'--subscriber-server', $node_s->connstr('pg1'),
-		'--database', 'pg1',
-		'--database', 'pg2'
+		'pg_createsubscriber', '--verbose',
+		'--verbose', '--pgdata',
+		$node_s->data_dir, '--publisher-server',
+		$node_p->connstr('pg1'), '--subscriber-server',
+		$node_s->connstr('pg1'), '--database',
+		'pg1', '--database',
+		'pg2'
 	],
 	'run pg_createsubscriber on node S');
 
