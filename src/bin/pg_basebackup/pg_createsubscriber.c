@@ -136,18 +136,21 @@ cleanup_objects_atexit(void)
 
 	for (i = 0; i < num_dbs; i++)
 	{
-		conn = connect_database(dbinfo[i].subconninfo);
-		if (conn != NULL)
+		if (dbinfo[i].made_subscription || recovery_ended)
 		{
-			if (dbinfo[i].made_subscription)
-				drop_subscription(conn, &dbinfo[i]);
-			/*
-			 * Publications are created on publisher before promotion so it
-			 * might exist on subscriber after recovery ends.
-			 */
-			if (recovery_ended)
-				drop_publication(conn, &dbinfo[i]);
-			disconnect_database(conn);
+			conn = connect_database(dbinfo[i].subconninfo);
+			if (conn != NULL)
+			{
+				if (dbinfo[i].made_subscription)
+					drop_subscription(conn, &dbinfo[i]);
+				/*
+				 * Publications are created on publisher before promotion so it
+				 * might exist on subscriber after recovery ends.
+				 */
+				if (recovery_ended)
+					drop_publication(conn, &dbinfo[i]);
+				disconnect_database(conn);
+			}
 		}
 
 		if (dbinfo[i].made_publication || dbinfo[i].made_replslot)
