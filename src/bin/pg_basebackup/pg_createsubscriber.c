@@ -51,7 +51,6 @@ struct LogicalRepInfo
 
 	bool		made_replslot;	/* replication slot was created */
 	bool		made_publication;	/* publication was created */
-	bool		made_subscription;	/* subscription was created */
 } LogicalRepInfo;
 
 static void cleanup_objects_atexit(void);
@@ -90,7 +89,6 @@ static void wait_for_end_recovery(const char *conninfo, const char *pg_ctl_path,
 static void create_publication(PGconn *conn, struct LogicalRepInfo *dbinfo);
 static void drop_publication(PGconn *conn, struct LogicalRepInfo *dbinfo);
 static void create_subscription(PGconn *conn, struct LogicalRepInfo *dbinfo);
-static void drop_subscription(PGconn *conn, struct LogicalRepInfo *dbinfo);
 static void set_replication_progress(PGconn *conn, struct LogicalRepInfo *dbinfo,
 									 const char *lsn);
 static void enable_subscription(PGconn *conn, struct LogicalRepInfo *dbinfo);
@@ -136,22 +134,11 @@ cleanup_objects_atexit(void)
 
 	for (i = 0; i < num_dbs; i++)
 	{
-		if (dbinfo[i].made_subscription || recovery_ended)
+		if (recovery_ended)
 		{
-			conn = connect_database(dbinfo[i].subconninfo);
-			if (conn != NULL)
-			{
-				if (dbinfo[i].made_subscription)
-					drop_subscription(conn, &dbinfo[i]);
-
-				/*
-				 * Publications are created on publisher before promotion so
-				 * it might exist on subscriber after recovery ends.
-				 */
-				if (recovery_ended)
-					drop_publication(conn, &dbinfo[i]);
-				disconnect_database(conn);
-			}
+			pg_log_warning("pg_createsubscriber failed after the end of recovery");
+			pg_log_warning_hint("The target server cannot be used as a physical replica anymore.");
+			pg_log_warning_hint("You must recreate the physical replica before continuing.");
 		}
 
 		if (dbinfo[i].made_publication || dbinfo[i].made_replslot)
@@ -369,7 +356,6 @@ store_pub_sub_info(SimpleStringList dbnames, const char *pub_base_conninfo,
 		/* Fill subscriber attributes */
 		conninfo = concat_conninfo_dbname(sub_base_conninfo, cell->val);
 		dbinfo[i].subconninfo = conninfo;
-		dbinfo[i].made_subscription = false;
 		/* Other fields will be filled later */
 
 		i++;
@@ -1193,7 +1179,7 @@ wait_for_end_recovery(const char *conninfo, const char *pg_ctl_path,
 	int			status = POSTMASTER_STILL_STARTING;
 	int			timer = 0;
 
-	pg_log_info("waiting the postmaster to reach the consistent state");
+	pg_log_info("waiting the target server to reach the consistent state");
 
 	conn = connect_database(conninfo);
 	if (conn == NULL)
@@ -1234,7 +1220,9 @@ wait_for_end_recovery(const char *conninfo, const char *pg_ctl_path,
 	if (status == POSTMASTER_STILL_STARTING)
 		pg_fatal("server did not end recovery");
 
-	pg_log_info("postmaster reached the consistent state");
+	pg_log_info("target server reached the consistent state");
+	pg_log_info_hint("If pg_createsubscriber fails after this point, "
+			"you must recreate the physical replica before continuing.");
 }
 
 /*
@@ -1395,42 +1383,8 @@ create_subscription(PGconn *conn, struct LogicalRepInfo *dbinfo)
 		}
 	}
 
-	/* for cleanup purposes */
-	dbinfo->made_subscription = true;
-
 	if (!dry_run)
 		PQclear(res);
-
-	destroyPQExpBuffer(str);
-}
-
-/*
- * Remove subscription if it couldn't finish all steps.
- */
-static void
-drop_subscription(PGconn *conn, struct LogicalRepInfo *dbinfo)
-{
-	PQExpBuffer str = createPQExpBuffer();
-	PGresult   *res;
-
-	Assert(conn != NULL);
-
-	pg_log_info("dropping subscription \"%s\" on database \"%s\"",
-				dbinfo->subname, dbinfo->dbname);
-
-	appendPQExpBuffer(str, "DROP SUBSCRIPTION %s", dbinfo->subname);
-
-	pg_log_debug("command is: %s", str->data);
-
-	if (!dry_run)
-	{
-		res = PQexec(conn, str->data);
-		if (PQresultStatus(res) != PGRES_COMMAND_OK)
-			pg_log_error("could not drop subscription \"%s\" on database \"%s\": %s",
-						 dbinfo->subname, dbinfo->dbname, PQresultErrorMessage(res));
-
-		PQclear(res);
-	}
 
 	destroyPQExpBuffer(str);
 }
