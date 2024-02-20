@@ -1224,9 +1224,9 @@ create_publication(PGconn *conn, struct LogicalRepInfo *dbinfo)
 
 	Assert(conn != NULL);
 
-	/* Check if the publication needs to be created */
+	/* Check if the publication already exists */
 	appendPQExpBuffer(str,
-					  "SELECT puballtables FROM pg_catalog.pg_publication "
+					  "SELECT 1 FROM pg_catalog.pg_publication "
 					  "WHERE pubname = '%s'",
 					  dbinfo->pubname);
 	res = PQexec(conn, str->data);
@@ -1241,31 +1241,17 @@ create_publication(PGconn *conn, struct LogicalRepInfo *dbinfo)
 	if (PQntuples(res) == 1)
 	{
 		/*
-		 * If publication name already exists and puballtables is true, let's
-		 * use it. A previous run of pg_createsubscriber must have created
-		 * this publication. Bail out.
+		 * Unfortunately, if it reaches this code path, it will always
+		 * fail (unless you decide to change the existing publication
+		 * name). That's bad but it is very unlikely that the user will
+		 * choose a name with pg_createsubscriber_ prefix followed by the
+		 * exact database oid.
 		 */
-		if (strcmp(PQgetvalue(res, 0, 0), "t") == 0)
-		{
-			pg_log_info("publication \"%s\" already exists", dbinfo->pubname);
-			return;
-		}
-		else
-		{
-			/*
-			 * Unfortunately, if it reaches this code path, it will always
-			 * fail (unless you decide to change the existing publication
-			 * name). That's bad but it is very unlikely that the user will
-			 * choose a name with pg_createsubscriber_ prefix followed by the
-			 * exact database oid in which puballtables is false.
-			 */
-			pg_log_error("publication \"%s\" does not replicate changes for all tables",
-						 dbinfo->pubname);
-			pg_log_error_hint("Consider renaming this publication.");
-			PQclear(res);
-			PQfinish(conn);
-			exit(1);
-		}
+		pg_log_error("publication \"%s\" already exists", dbinfo->pubname);
+		pg_log_error_hint("Consider renaming this publication before continuing.");
+		PQclear(res);
+		PQfinish(conn);
+		exit(1);
 	}
 
 	PQclear(res);
