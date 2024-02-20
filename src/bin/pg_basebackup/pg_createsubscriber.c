@@ -68,7 +68,7 @@ static uint64 get_primary_sysid(const char *conninfo);
 static uint64 get_standby_sysid(const char *datadir);
 static void modify_subscriber_sysid(const char *pg_resetwal_path,
 									struct CreateSubscriberOptions *opt);
-static int	server_is_in_recovery(PGconn *conn);
+static bool server_is_in_recovery(PGconn *conn);
 static bool check_publisher(struct LogicalRepInfo *dbinfo);
 static bool setup_publisher(struct LogicalRepInfo *dbinfo);
 static bool check_subscriber(struct LogicalRepInfo *dbinfo);
@@ -612,10 +612,8 @@ setup_publisher(struct LogicalRepInfo *dbinfo)
 
 /*
  * Is recovery still in progress?
- * If the answer is yes, it returns 1, otherwise, returns 0. If an error occurs
- * while executing the query, it returns -1.
  */
-static int
+static bool
 server_is_in_recovery(PGconn *conn)
 {
 	PGresult   *res;
@@ -624,22 +622,13 @@ server_is_in_recovery(PGconn *conn)
 	res = PQexec(conn, "SELECT pg_catalog.pg_is_in_recovery()");
 
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
-	{
-		PQclear(res);
-		pg_log_error("could not obtain recovery progress");
-		return -1;
-	}
+		pg_fatal("could not obtain recovery progress");
 
 	ret = strcmp("t", PQgetvalue(res, 0, 0));
 
 	PQclear(res);
 
-	if (ret == 0)
-		return 1;
-	else if (ret > 0)
-		return 0;
-	else
-		return -1;				/* should not happen */
+	return ret == 0;
 }
 
 /*
@@ -668,7 +657,7 @@ check_publisher(struct LogicalRepInfo *dbinfo)
 	 * If the primary server is in recovery (i.e. cascading replication),
 	 * objects (publication) cannot be created because it is read only.
 	 */
-	if (server_is_in_recovery(conn) == 1)
+	if (server_is_in_recovery(conn))
 		pg_fatal("primary server cannot be in recovery");
 
 	/*------------------------------------------------------------------------
@@ -809,7 +798,7 @@ check_subscriber(struct LogicalRepInfo *dbinfo)
 		exit(1);
 
 	/* The target server must be a standby */
-	if (server_is_in_recovery(conn) == 0)
+	if (!server_is_in_recovery(conn))
 	{
 		pg_log_error("The target server is not a standby");
 		return false;
@@ -1187,15 +1176,13 @@ wait_for_end_recovery(const char *conninfo, const char *pg_ctl_path,
 
 	for (;;)
 	{
-		int			in_recovery;
-
-		in_recovery = server_is_in_recovery(conn);
+		bool in_recovery = server_is_in_recovery(conn);
 
 		/*
 		 * Does the recovery process finish? In dry run mode, there is no
 		 * recovery mode. Bail out as the recovery process has ended.
 		 */
-		if (in_recovery == 0 || dry_run)
+		if (!in_recovery || dry_run)
 		{
 			status = POSTMASTER_READY;
 			recovery_ended = true;
