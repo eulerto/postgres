@@ -883,7 +883,8 @@ check_subscriber(struct LogicalRepInfo *dbinfo)
 				 max_lrworkers);
 	pg_log_debug("subscriber: max_replication_slots: %d", max_repslots);
 	pg_log_debug("subscriber: max_worker_processes: %d", max_wprocs);
-	pg_log_debug("subscriber: primary_slot_name: %s", primary_slot_name);
+	if (primary_slot_name)
+		pg_log_debug("subscriber: primary_slot_name: %s", primary_slot_name);
 
 	PQclear(res);
 
