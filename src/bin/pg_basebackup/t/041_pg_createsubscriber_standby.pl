@@ -23,7 +23,8 @@ $node_p->start;
 
 # Set up node F as about-to-fail node
 # Force it to initialize a new cluster instead of copying a
-# previously initdb'd cluster.
+# previously initdb'd cluster. New cluster has a different system identifier so
+# we can test if the target cluster is a copy of the source cluster.
 {
 	local $ENV{'INITDB_TEMPLATE'} = undef;
 

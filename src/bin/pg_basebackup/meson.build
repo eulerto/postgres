@@ -38,6 +38,24 @@ pg_basebackup = executable('pg_basebackup',
 bin_targets += pg_basebackup
 
 
+pg_createsubscriber_sources = files(
+  'pg_createsubscriber.c'
+)
+
+if host_system == 'windows'
+  pg_createsubscriber_sources += rc_bin_gen.process(win32ver_rc, extra_args: [
+	'--NAME', 'pg_createsubscriber',
+	'--FILEDESC', 'pg_createsubscriber - create a new logical replica from a standby server',])
+endif
+
+pg_createsubscriber = executable('pg_createsubscriber',
+  pg_createsubscriber_sources,
+  dependencies: [frontend_code, libpq],
+  kwargs: default_bin_args,
+)
+bin_targets += pg_createsubscriber
+
+
 pg_receivewal_sources = files(
   'pg_receivewal.c',
 )
@@ -74,23 +92,6 @@ pg_recvlogical = executable('pg_recvlogical',
   kwargs: default_bin_args,
 )
 bin_targets += pg_recvlogical
-
-pg_createsubscriber_sources = files(
-  'pg_createsubscriber.c'
-)
-
-if host_system == 'windows'
-  pg_createsubscriber_sources += rc_bin_gen.process(win32ver_rc, extra_args: [
-	'--NAME', 'pg_createsubscriber',
-	'--FILEDESC', 'pg_createsubscriber - create a new logical replica from a standby server',])
-endif
-
-pg_createsubscriber = executable('pg_createsubscriber',
-  pg_createsubscriber_sources,
-  dependencies: [frontend_code, libpq],
-  kwargs: default_bin_args,
-)
-bin_targets += pg_createsubscriber
 
 tests += {
   'name': 'pg_basebackup',

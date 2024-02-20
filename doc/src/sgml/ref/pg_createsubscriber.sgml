@@ -25,6 +25,11 @@ PostgreSQL documentation
    <arg rep="repeat"><replaceable>option</replaceable></arg>
    <group choice="plain">
     <group choice="req">
+     <arg choice="plain"><option>-d</option></arg>
+     <arg choice="plain"><option>--database</option></arg>
+    </group>
+    <replaceable>dbname</replaceable>
+    <group choice="req">
      <arg choice="plain"><option>-D</option> </arg>
      <arg choice="plain"><option>--pgdata</option></arg>
     </group>
@@ -39,11 +44,6 @@ PostgreSQL documentation
      <arg choice="plain"><option>--subscriber-server</option></arg>
     </group>
     <replaceable>connstr</replaceable>
-    <group choice="req">
-     <arg choice="plain"><option>-d</option></arg>
-     <arg choice="plain"><option>--database</option></arg>
-    </group>
-    <replaceable>dbname</replaceable>
    </group>
   </cmdsynopsis>
  </refsynopsisdiv>
@@ -56,10 +56,10 @@ PostgreSQL documentation
   </para>
 
   <para>
-   The <application>pg_createsubscriber</application> should be run at the target
-   server. The source server (known as publisher server) should accept logical
+   The <application>pg_createsubscriber</application> must be run at the target
+   server. The source server (known as publisher server) must accept logical
    replication connections from the target server (known as subscriber server).
-   The target server should accept local logical replication connection.
+   The target server must accept local logical replication connection.
   </para>
  </refsect1>
 
@@ -71,37 +71,6 @@ PostgreSQL documentation
     command-line arguments:
 
     <variablelist>
-     <varlistentry>
-      <term><option>-D <replaceable class="parameter">directory</replaceable></option></term>
-      <term><option>--pgdata=<replaceable class="parameter">directory</replaceable></option></term>
-      <listitem>
-       <para>
-        The target directory that contains a cluster directory from a physical
-        replica.
-       </para>
-      </listitem>
-     </varlistentry>
-
-     <varlistentry>
-      <term><option>-P <replaceable class="parameter">connstr</replaceable></option></term>
-      <term><option>--publisher-server=<replaceable class="parameter">connstr</replaceable></option></term>
-      <listitem>
-       <para>
-        The connection string to the publisher. For details see <xref linkend="libpq-connstring"/>.
-       </para>
-      </listitem>
-     </varlistentry>
-
-     <varlistentry>
-      <term><option>-S <replaceable class="parameter">connstr</replaceable></option></term>
-      <term><option>--subscriber-server=<replaceable class="parameter">connstr</replaceable></option></term>
-      <listitem>
-       <para>
-        The connection string to the subscriber. For details see <xref linkend="libpq-connstring"/>.
-       </para>
-      </listitem>
-     </varlistentry>
-
      <varlistentry>
       <term><option>-d <replaceable class="parameter">dbname</replaceable></option></term>
       <term><option>--database=<replaceable class="parameter">dbname</replaceable></option></term>
@@ -124,11 +93,22 @@ PostgreSQL documentation
      </varlistentry>
 
      <varlistentry>
-      <term><option>-r</option></term>
-      <term><option>--retain</option></term>
+      <term><option>-D <replaceable class="parameter">directory</replaceable></option></term>
+      <term><option>--pgdata=<replaceable class="parameter">directory</replaceable></option></term>
       <listitem>
        <para>
-        Retain log file even after successful completion.
+        The target directory that contains a cluster directory from a physical
+        replica.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-P <replaceable class="parameter">connstr</replaceable></option></term>
+      <term><option>--publisher-server=<replaceable class="parameter">connstr</replaceable></option></term>
+      <listitem>
+       <para>
+        The connection string to the publisher. For details see <xref linkend="libpq-connstring"/>.
        </para>
       </listitem>
      </varlistentry>
@@ -142,6 +122,26 @@ PostgreSQL documentation
         disables. The default is 0.
        </para>
        </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-r</option></term>
+      <term><option>--retain</option></term>
+      <listitem>
+       <para>
+        Retain log file even after successful completion.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-S <replaceable class="parameter">connstr</replaceable></option></term>
+      <term><option>--subscriber-server=<replaceable class="parameter">connstr</replaceable></option></term>
+      <listitem>
+       <para>
+        The connection string to the subscriber. For details see <xref linkend="libpq-connstring"/>.
+       </para>
+      </listitem>
      </varlistentry>
 
      <varlistentry>
@@ -165,22 +165,22 @@ PostgreSQL documentation
 
     <variablelist>
      <varlistentry>
-       <term><option>-V</option></term>
-       <term><option>--version</option></term>
-       <listitem>
-       <para>
-       Print the <application>pg_createsubscriber</application> version and exit.
-       </para>
-       </listitem>
-     </varlistentry>
-
-     <varlistentry>
        <term><option>-?</option></term>
        <term><option>--help</option></term>
        <listitem>
        <para>
        Show help about <application>pg_createsubscriber</application> command
        line arguments, and exit.
+       </para>
+       </listitem>
+     </varlistentry>
+
+     <varlistentry>
+       <term><option>-V</option></term>
+       <term><option>--version</option></term>
+       <listitem>
+       <para>
+       Print the <application>pg_createsubscriber</application> version and exit.
        </para>
        </listitem>
      </varlistentry>

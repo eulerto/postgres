@@ -282,10 +282,10 @@
    &pgarchivecleanup;
    &pgChecksums;
    &pgControldata;
+   &pgCreateSubscriber;
    &pgCtl;
    &pgResetwal;
    &pgRewind;
-   &pgCreateSubscriber;
    &pgtestfsync;
    &pgtesttiming;
    &pgupgrade;

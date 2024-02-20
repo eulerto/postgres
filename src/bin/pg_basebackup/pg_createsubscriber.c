@@ -30,7 +30,7 @@
 #define	PGS_OUTPUT_DIR	"pg_createsubscriber_output.d"
 
 /* Command-line options */
-typedef struct CreateSubscriberOptions
+struct CreateSubscriberOptions
 {
 	char	   *subscriber_dir; /* standby/subscriber data directory */
 	char	   *pub_conninfo_str;	/* publisher connection string */
@@ -40,7 +40,7 @@ typedef struct CreateSubscriberOptions
 	int			recovery_timeout;	/* stop recovery after this time */
 } CreateSubscriberOptions;
 
-typedef struct LogicalRepInfo
+struct LogicalRepInfo
 {
 	Oid			oid;			/* database OID */
 	char	   *dbname;			/* database name */
@@ -60,7 +60,7 @@ static char *get_base_conninfo(char *conninfo, char **dbname);
 static char *get_exec_path(const char *argv0, const char *progname);
 static bool check_data_directory(const char *datadir);
 static char *concat_conninfo_dbname(const char *conninfo, const char *dbname);
-static LogicalRepInfo *store_pub_sub_info(SimpleStringList dbnames,
+static struct LogicalRepInfo *store_pub_sub_info(SimpleStringList dbnames,
 										  const char *pub_base_conninfo,
 										  const char *sub_base_conninfo);
 static PGconn *connect_database(const char *conninfo);
@@ -68,17 +68,17 @@ static void disconnect_database(PGconn *conn);
 static uint64 get_primary_sysid(const char *conninfo);
 static uint64 get_standby_sysid(const char *datadir);
 static void modify_subscriber_sysid(const char *pg_resetwal_path,
-									CreateSubscriberOptions *opt);
+									struct CreateSubscriberOptions *opt);
 static int	server_is_in_recovery(PGconn *conn);
-static bool check_publisher(LogicalRepInfo *dbinfo);
-static bool setup_publisher(LogicalRepInfo *dbinfo);
-static bool check_subscriber(LogicalRepInfo *dbinfo);
-static bool setup_subscriber(LogicalRepInfo *dbinfo,
+static bool check_publisher(struct LogicalRepInfo *dbinfo);
+static bool setup_publisher(struct LogicalRepInfo *dbinfo);
+static bool check_subscriber(struct LogicalRepInfo *dbinfo);
+static bool setup_subscriber(struct LogicalRepInfo *dbinfo,
 							 const char *consistent_lsn);
 static char *create_logical_replication_slot(PGconn *conn,
-											 LogicalRepInfo *dbinfo,
+											 struct LogicalRepInfo *dbinfo,
 											 bool temporary);
-static void drop_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
+static void drop_replication_slot(PGconn *conn, struct LogicalRepInfo *dbinfo,
 								  const char *slot_name);
 static char *setup_server_logfile(const char *datadir);
 static void start_standby_server(const char *pg_ctl_path, const char *datadir,
@@ -86,14 +86,14 @@ static void start_standby_server(const char *pg_ctl_path, const char *datadir,
 static void stop_standby_server(const char *pg_ctl_path, const char *datadir);
 static void pg_ctl_status(const char *pg_ctl_cmd, int rc, int action);
 static void wait_for_end_recovery(const char *conninfo, const char *pg_ctl_path,
-								  CreateSubscriberOptions *opt);
-static void create_publication(PGconn *conn, LogicalRepInfo *dbinfo);
-static void drop_publication(PGconn *conn, LogicalRepInfo *dbinfo);
-static void create_subscription(PGconn *conn, LogicalRepInfo *dbinfo);
-static void drop_subscription(PGconn *conn, LogicalRepInfo *dbinfo);
-static void set_replication_progress(PGconn *conn, LogicalRepInfo *dbinfo,
+								  struct CreateSubscriberOptions *opt);
+static void create_publication(PGconn *conn, struct LogicalRepInfo *dbinfo);
+static void drop_publication(PGconn *conn, struct LogicalRepInfo *dbinfo);
+static void create_subscription(PGconn *conn, struct LogicalRepInfo *dbinfo);
+static void drop_subscription(PGconn *conn, struct LogicalRepInfo *dbinfo);
+static void set_replication_progress(PGconn *conn, struct LogicalRepInfo *dbinfo,
 									 const char *lsn);
-static void enable_subscription(PGconn *conn, LogicalRepInfo *dbinfo);
+static void enable_subscription(PGconn *conn, struct LogicalRepInfo *dbinfo);
 
 #define	USEC_PER_SEC	1000000
 #define	WAIT_INTERVAL	1		/* 1 second */
@@ -105,7 +105,7 @@ static bool dry_run = false;
 
 static bool success = false;
 
-static LogicalRepInfo *dbinfo;
+static struct LogicalRepInfo *dbinfo;
 static int	num_dbs = 0;
 
 static bool recovery_ended = false;
@@ -177,13 +177,13 @@ usage(void)
 	printf(_("Usage:\n"));
 	printf(_("  %s [OPTION]...\n"), progname);
 	printf(_("\nOptions:\n"));
-	printf(_(" -D, --pgdata=DATADIR                location for the subscriber data directory\n"));
-	printf(_(" -P, --publisher-server=CONNSTR      publisher connection string\n"));
-	printf(_(" -S, --subscriber-server=CONNSTR     subscriber connection string\n"));
 	printf(_(" -d, --database=DBNAME               database to create a subscription\n"));
+	printf(_(" -D, --pgdata=DATADIR                location for the subscriber data directory\n"));
 	printf(_(" -n, --dry-run                       dry run, just show what would be done\n"));
-	printf(_(" -t, --recovery-timeout=SECS         seconds to wait for recovery to end\n"));
+	printf(_(" -P, --publisher-server=CONNSTR      publisher connection string\n"));
 	printf(_(" -r, --retain                        retain log file after success\n"));
+	printf(_(" -S, --subscriber-server=CONNSTR     subscriber connection string\n"));
+	printf(_(" -t, --recovery-timeout=SECS         seconds to wait for recovery to end\n"));
 	printf(_(" -v, --verbose                       output verbose messages\n"));
 	printf(_(" -V, --version                       output version information, then exit\n"));
 	printf(_(" -?, --help                          show this help, then exit\n"));
@@ -347,14 +347,14 @@ concat_conninfo_dbname(const char *conninfo, const char *dbname)
 /*
  * Store publication and subscription information.
  */
-static LogicalRepInfo *
+static struct LogicalRepInfo *
 store_pub_sub_info(SimpleStringList dbnames, const char *pub_base_conninfo,
 				   const char *sub_base_conninfo)
 {
-	LogicalRepInfo *dbinfo;
+	struct LogicalRepInfo *dbinfo;
 	int			i = 0;
 
-	dbinfo = (LogicalRepInfo *) pg_malloc(num_dbs * sizeof(LogicalRepInfo));
+	dbinfo = (struct LogicalRepInfo *) pg_malloc(num_dbs * sizeof(struct LogicalRepInfo));
 
 	for (SimpleStringListCell *cell = dbnames.head; cell; cell = cell->next)
 	{
@@ -491,7 +491,7 @@ get_standby_sysid(const char *datadir)
  * files from one of the systems might be used in the other one.
  */
 static void
-modify_subscriber_sysid(const char *pg_resetwal_path, CreateSubscriberOptions *opt)
+modify_subscriber_sysid(const char *pg_resetwal_path, struct CreateSubscriberOptions *opt)
 {
 	ControlFileData *cf;
 	bool		crc_ok;
@@ -545,7 +545,7 @@ modify_subscriber_sysid(const char *pg_resetwal_path, CreateSubscriberOptions *o
  * replication.
  */
 static bool
-setup_publisher(LogicalRepInfo *dbinfo)
+setup_publisher(struct LogicalRepInfo *dbinfo)
 {
 	for (int i = 0; i < num_dbs; i++)
 	{
@@ -660,7 +660,7 @@ server_is_in_recovery(PGconn *conn)
  * Is the primary server ready for logical replication?
  */
 static bool
-check_publisher(LogicalRepInfo *dbinfo)
+check_publisher(struct LogicalRepInfo *dbinfo)
 {
 	PGconn	   *conn;
 	PGresult   *res;
@@ -806,7 +806,7 @@ check_publisher(LogicalRepInfo *dbinfo)
  * Is the standby server ready for logical replication?
  */
 static bool
-check_subscriber(LogicalRepInfo *dbinfo)
+check_subscriber(struct LogicalRepInfo *dbinfo)
 {
 	PGconn	   *conn;
 	PGresult   *res;
@@ -950,7 +950,7 @@ check_subscriber(LogicalRepInfo *dbinfo)
  * repliation setup.
  */
 static bool
-setup_subscriber(LogicalRepInfo *dbinfo, const char *consistent_lsn)
+setup_subscriber(struct LogicalRepInfo *dbinfo, const char *consistent_lsn)
 {
 	for (int i = 0; i < num_dbs; i++)
 	{
@@ -989,7 +989,7 @@ setup_subscriber(LogicalRepInfo *dbinfo, const char *consistent_lsn)
  * result set that contains the LSN.
  */
 static char *
-create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
+create_logical_replication_slot(PGconn *conn, struct LogicalRepInfo *dbinfo,
 								bool temporary)
 {
 	PQExpBuffer str = createPQExpBuffer();
@@ -1045,7 +1045,7 @@ create_logical_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
 }
 
 static void
-drop_replication_slot(PGconn *conn, LogicalRepInfo *dbinfo,
+drop_replication_slot(PGconn *conn, struct LogicalRepInfo *dbinfo,
 					  const char *slot_name)
 {
 	PQExpBuffer str = createPQExpBuffer();
@@ -1187,7 +1187,7 @@ pg_ctl_status(const char *pg_ctl_cmd, int rc, int action)
  */
 static void
 wait_for_end_recovery(const char *conninfo, const char *pg_ctl_path,
-					  CreateSubscriberOptions *opt)
+					  struct CreateSubscriberOptions *opt)
 {
 	PGconn	   *conn;
 	int			status = POSTMASTER_STILL_STARTING;
@@ -1241,7 +1241,7 @@ wait_for_end_recovery(const char *conninfo, const char *pg_ctl_path,
  * Create a publication that includes all tables in the database.
  */
 static void
-create_publication(PGconn *conn, LogicalRepInfo *dbinfo)
+create_publication(PGconn *conn, struct LogicalRepInfo *dbinfo)
 {
 	PQExpBuffer str = createPQExpBuffer();
 	PGresult   *res;
@@ -1327,7 +1327,7 @@ create_publication(PGconn *conn, LogicalRepInfo *dbinfo)
  * Remove publication if it couldn't finish all steps.
  */
 static void
-drop_publication(PGconn *conn, LogicalRepInfo *dbinfo)
+drop_publication(PGconn *conn, struct LogicalRepInfo *dbinfo)
 {
 	PQExpBuffer str = createPQExpBuffer();
 	PGresult   *res;
@@ -1367,7 +1367,7 @@ drop_publication(PGconn *conn, LogicalRepInfo *dbinfo)
  * initial location.
  */
 static void
-create_subscription(PGconn *conn, LogicalRepInfo *dbinfo)
+create_subscription(PGconn *conn, struct LogicalRepInfo *dbinfo)
 {
 	PQExpBuffer str = createPQExpBuffer();
 	PGresult   *res;
@@ -1408,7 +1408,7 @@ create_subscription(PGconn *conn, LogicalRepInfo *dbinfo)
  * Remove subscription if it couldn't finish all steps.
  */
 static void
-drop_subscription(PGconn *conn, LogicalRepInfo *dbinfo)
+drop_subscription(PGconn *conn, struct LogicalRepInfo *dbinfo)
 {
 	PQExpBuffer str = createPQExpBuffer();
 	PGresult   *res;
@@ -1446,7 +1446,7 @@ drop_subscription(PGconn *conn, LogicalRepInfo *dbinfo)
  * printing purposes.
  */
 static void
-set_replication_progress(PGconn *conn, LogicalRepInfo *dbinfo, const char *lsn)
+set_replication_progress(PGconn *conn, struct LogicalRepInfo *dbinfo, const char *lsn)
 {
 	PQExpBuffer str = createPQExpBuffer();
 	PGresult   *res;
@@ -1532,7 +1532,7 @@ set_replication_progress(PGconn *conn, LogicalRepInfo *dbinfo, const char *lsn)
  * of this setup.
  */
 static void
-enable_subscription(PGconn *conn, LogicalRepInfo *dbinfo)
+enable_subscription(PGconn *conn, struct LogicalRepInfo *dbinfo)
 {
 	PQExpBuffer str = createPQExpBuffer();
 	PGresult   *res;
@@ -1567,20 +1567,20 @@ main(int argc, char **argv)
 {
 	static struct option long_options[] =
 	{
-		{"help", no_argument, NULL, '?'},
-		{"version", no_argument, NULL, 'V'},
-		{"pgdata", required_argument, NULL, 'D'},
-		{"publisher-server", required_argument, NULL, 'P'},
-		{"subscriber-server", required_argument, NULL, 'S'},
 		{"database", required_argument, NULL, 'd'},
+		{"pgdata", required_argument, NULL, 'D'},
 		{"dry-run", no_argument, NULL, 'n'},
-		{"recovery-timeout", required_argument, NULL, 't'},
+		{"publisher-server", required_argument, NULL, 'P'},
 		{"retain", no_argument, NULL, 'r'},
+		{"subscriber-server", required_argument, NULL, 'S'},
+		{"recovery-timeout", required_argument, NULL, 't'},
 		{"verbose", no_argument, NULL, 'v'},
+		{"version", no_argument, NULL, 'V'},
+		{"help", no_argument, NULL, '?'},
 		{NULL, 0, NULL, 0}
 	};
 
-	CreateSubscriberOptions opt = {0};
+	struct CreateSubscriberOptions opt = {0};
 
 	int			c;
 	int			option_index;
@@ -1652,21 +1652,11 @@ main(int argc, char **argv)
 
 	get_restricted_token();
 
-	while ((c = getopt_long(argc, argv, "D:P:S:d:nrt:v",
+	while ((c = getopt_long(argc, argv, "d:D:nP:rS:t:v",
 							long_options, &option_index)) != -1)
 	{
 		switch (c)
 		{
-			case 'D':
-				opt.subscriber_dir = pg_strdup(optarg);
-				canonicalize_path(opt.subscriber_dir);
-				break;
-			case 'P':
-				opt.pub_conninfo_str = pg_strdup(optarg);
-				break;
-			case 'S':
-				opt.sub_conninfo_str = pg_strdup(optarg);
-				break;
 			case 'd':
 				/* Ignore duplicated database names */
 				if (!simple_string_list_member(&opt.database_names, optarg))
@@ -1675,11 +1665,21 @@ main(int argc, char **argv)
 					num_dbs++;
 				}
 				break;
+			case 'D':
+				opt.subscriber_dir = pg_strdup(optarg);
+				canonicalize_path(opt.subscriber_dir);
+				break;
 			case 'n':
 				dry_run = true;
 				break;
+			case 'P':
+				opt.pub_conninfo_str = pg_strdup(optarg);
+				break;
 			case 'r':
 				opt.retain = true;
+				break;
+			case 'S':
+				opt.sub_conninfo_str = pg_strdup(optarg);
 				break;
 			case 't':
 				opt.recovery_timeout = atoi(optarg);
