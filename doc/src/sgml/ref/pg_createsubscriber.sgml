@@ -39,11 +39,6 @@ PostgreSQL documentation
      <arg choice="plain"><option>--publisher-server</option></arg>
     </group>
     <replaceable>connstr</replaceable>
-    <group choice="req">
-     <arg choice="plain"><option>-S</option></arg>
-     <arg choice="plain"><option>--subscriber-server</option></arg>
-    </group>
-    <replaceable>connstr</replaceable>
    </group>
   </cmdsynopsis>
  </refsynopsisdiv>
@@ -104,6 +99,18 @@ PostgreSQL documentation
      </varlistentry>
 
      <varlistentry>
+      <term><option>-p <replaceable class="parameter">port</replaceable></option></term>
+      <term><option>--port=<replaceable class="parameter">port</replaceable></option></term>
+      <listitem>
+       <para>
+        The port number on which the target server is listening for connections.
+        Defaults to running the target server on port 50432 to avoid unintended
+        client connnections.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
       <term><option>-P <replaceable class="parameter">connstr</replaceable></option></term>
       <term><option>--publisher-server=<replaceable class="parameter">connstr</replaceable></option></term>
       <listitem>
@@ -135,11 +142,23 @@ PostgreSQL documentation
      </varlistentry>
 
      <varlistentry>
-      <term><option>-S <replaceable class="parameter">connstr</replaceable></option></term>
-      <term><option>--subscriber-server=<replaceable class="parameter">connstr</replaceable></option></term>
+      <term><option>-s <replaceable class="parameter">dir</replaceable></option></term>
+      <term><option>--socket-directory=<replaceable class="parameter">dir</replaceable></option></term>
       <listitem>
        <para>
-        The connection string to the subscriber. For details see <xref linkend="libpq-connstring"/>.
+        The directory to use for postmaster sockets on target server. The
+        default is current directory.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-U <replaceable class="parameter">username</replaceable></option></term>
+      <term><option>--subscriber-username=<replaceable class="parameter">username</replaceable></option></term>
+      <listitem>
+       <para>
+        The username to connect as on target server. Defaults to the current
+        operating system user name.
        </para>
       </listitem>
      </varlistentry>

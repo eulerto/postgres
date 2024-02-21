@@ -23,10 +23,12 @@
 #include "common/file_perm.h"
 #include "common/logging.h"
 #include "common/restricted_token.h"
+#include "common/username.h"
 #include "fe_utils/recovery_gen.h"
 #include "fe_utils/simple_list.h"
 #include "getopt_long.h"
 
+#define	DEFAULT_SUB_PORT	50432
 #define	PGS_OUTPUT_DIR	"pg_createsubscriber_output.d"
 
 /* Command-line options */
@@ -34,7 +36,9 @@ struct CreateSubscriberOptions
 {
 	char	   *subscriber_dir; /* standby/subscriber data directory */
 	char	   *pub_conninfo_str;	/* publisher connection string */
-	char	   *sub_conninfo_str;	/* subscriber connection string */
+	char	   *socket_dir;			/* directory for Unix-domain socket, if any */
+	unsigned short	sub_port;		/* subscriber port number */
+	const char	   *sub_username;	/* subscriber username */
 	SimpleStringList database_names;	/* list of database names */
 	bool		retain;			/* retain log file? */
 	int			recovery_timeout;	/* stop recovery after this time */
@@ -80,8 +84,8 @@ static char *create_logical_replication_slot(PGconn *conn,
 static void drop_replication_slot(PGconn *conn, struct LogicalRepInfo *dbinfo,
 								  const char *slot_name);
 static char *setup_server_logfile(const char *datadir);
-static void start_standby_server(const char *pg_ctl_path, const char *datadir,
-								 const char *logfile);
+static void start_standby_server(struct CreateSubscriberOptions *opt,
+								 const char *pg_ctl_path, const char *logfile);
 static void stop_standby_server(const char *pg_ctl_path, const char *datadir);
 static void pg_ctl_status(const char *pg_ctl_cmd, int rc, int action);
 static void wait_for_end_recovery(const char *conninfo, const char *pg_ctl_path,
@@ -167,10 +171,12 @@ usage(void)
 	printf(_(" -d, --database=DBNAME               database to create a subscription\n"));
 	printf(_(" -D, --pgdata=DATADIR                location for the subscriber data directory\n"));
 	printf(_(" -n, --dry-run                       dry run, just show what would be done\n"));
+	printf(_(" -p, --subscriber-port=PORT          subscriber port number (default %d)\n"), DEFAULT_SUB_PORT);
 	printf(_(" -P, --publisher-server=CONNSTR      publisher connection string\n"));
 	printf(_(" -r, --retain                        retain log file after success\n"));
-	printf(_(" -S, --subscriber-server=CONNSTR     subscriber connection string\n"));
+	printf(_(" -s, --socket-directory=DIR          socket directory to use (default current directory)\n"));
 	printf(_(" -t, --recovery-timeout=SECS         seconds to wait for recovery to end\n"));
+	printf(_(" -U, --subscriber-username=NAME      subscriber username\n"));
 	printf(_(" -v, --verbose                       output verbose messages\n"));
 	printf(_(" -V, --version                       output version information, then exit\n"));
 	printf(_(" -?, --help                          show this help, then exit\n"));
@@ -357,6 +363,9 @@ store_pub_sub_info(SimpleStringList dbnames, const char *pub_base_conninfo,
 		conninfo = concat_conninfo_dbname(sub_base_conninfo, cell->val);
 		dbinfo[i].subconninfo = conninfo;
 		/* Other fields will be filled later */
+
+		pg_log_debug("publisher(%d): connection string: %s", i, dbinfo[i].pubconninfo);
+		pg_log_debug("subscriber(%d): connection string: %s", i, dbinfo[i].subconninfo);
 
 		i++;
 	}
@@ -1093,14 +1102,35 @@ setup_server_logfile(const char *datadir)
 }
 
 static void
-start_standby_server(const char *pg_ctl_path, const char *datadir,
+start_standby_server(struct CreateSubscriberOptions *opt, const char *pg_ctl_path,
 					 const char *logfile)
 {
 	char	   *pg_ctl_cmd;
+	char		socket_string[MAXPGPATH + 200];
 	int			rc;
 
-	pg_ctl_cmd = psprintf("\"%s\" start -D \"%s\" -s -l \"%s\"",
-						  pg_ctl_path, datadir, logfile);
+	socket_string[0] = '\0';
+
+#if !defined(WIN32)
+	/*
+	 * An empty listen_addresses list means the server does not listen on any
+	 * IP interfaces; only Unix-domain sockets can be used to connect to the
+	 * server. Prevent external connections to minimize the chance of failure.
+	 */
+	strcat(socket_string,
+			" -c listen_addresses='' -c unix_socket_permissions=0700");
+
+	if (opt->socket_dir)
+		snprintf(socket_string + strlen(socket_string),
+				 sizeof(socket_string) - strlen(socket_string),
+				 " -c unix_socket_directories='%s'",
+				 opt->socket_dir);
+#endif
+
+	pg_ctl_cmd = psprintf("\"%s\" start -D \"%s\" -s -l \"%s\" -o \"-p %u%s\"",
+						  pg_ctl_path, opt->subscriber_dir, logfile,
+						  opt->sub_port, socket_string);
+	pg_log_debug("pg_ctl command is: %s", pg_ctl_cmd);
 	rc = system(pg_ctl_cmd);
 	pg_ctl_status(pg_ctl_cmd, rc, 1);
 }
@@ -1498,10 +1528,12 @@ main(int argc, char **argv)
 		{"database", required_argument, NULL, 'd'},
 		{"pgdata", required_argument, NULL, 'D'},
 		{"dry-run", no_argument, NULL, 'n'},
+		{"subscriber-port", required_argument, NULL, 'p'},
 		{"publisher-server", required_argument, NULL, 'P'},
 		{"retain", no_argument, NULL, 'r'},
-		{"subscriber-server", required_argument, NULL, 'S'},
+		{"socket-directory", required_argument, NULL, 's'},
 		{"recovery-timeout", required_argument, NULL, 't'},
+		{"subscriber-username", required_argument, NULL, 'U'},
 		{"verbose", no_argument, NULL, 'v'},
 		{"version", no_argument, NULL, 'V'},
 		{"help", no_argument, NULL, '?'},
@@ -1529,6 +1561,7 @@ main(int argc, char **argv)
 	PGconn	   *conn;
 	char	   *consistent_lsn;
 
+	PQExpBuffer sub_conninfo_str = createPQExpBuffer();
 	PQExpBuffer recoveryconfcontents = NULL;
 
 	char		pidfile[MAXPGPATH];
@@ -1556,7 +1589,9 @@ main(int argc, char **argv)
 	/* Default settings */
 	opt.subscriber_dir = NULL;
 	opt.pub_conninfo_str = NULL;
-	opt.sub_conninfo_str = NULL;
+	opt.socket_dir = NULL;
+	opt.sub_port = DEFAULT_SUB_PORT;
+	opt.sub_username = NULL;
 	opt.database_names = (SimpleStringList)
 	{
 		NULL, NULL
@@ -1600,17 +1635,24 @@ main(int argc, char **argv)
 			case 'n':
 				dry_run = true;
 				break;
+			case 'p':
+				if ((opt.sub_port = atoi(optarg)) <= 0)
+					pg_fatal("invalid subscriber port number");
+				break;
 			case 'P':
 				opt.pub_conninfo_str = pg_strdup(optarg);
 				break;
 			case 'r':
 				opt.retain = true;
 				break;
-			case 'S':
-				opt.sub_conninfo_str = pg_strdup(optarg);
+			case 's':
+				opt.socket_dir = pg_strdup(optarg);
 				break;
 			case 't':
 				opt.recovery_timeout = atoi(optarg);
+				break;
+			case 'U':
+				opt.sub_username = pg_strdup(optarg);
 				break;
 			case 'v':
 				pg_logging_increase_verbosity();
@@ -1644,6 +1686,41 @@ main(int argc, char **argv)
 	}
 
 	/*
+	 * If socket directory is not provided, use the current directory.
+	 */
+	if (opt.socket_dir == NULL)
+	{
+		char	cwd[MAXPGPATH];
+
+		if (!getcwd(cwd, MAXPGPATH))
+			pg_fatal("could not determine current directory");
+		opt.socket_dir = pg_strdup(cwd);
+		canonicalize_path(opt.socket_dir);
+	}
+
+	/*
+	 *
+	 * If subscriber username is not provided, check if the environment
+	 * variable sets it. If not, obtain the operating system name of the user
+	 * running it.
+	 */
+	if (opt.sub_username == NULL)
+	{
+		char		*errstr = NULL;
+
+		if (getenv("PGUSER"))
+		{
+			opt.sub_username = getenv("PGUSER");
+		}
+		else
+		{
+			opt.sub_username = get_user_name(&errstr);
+			if (errstr)
+				pg_fatal("%s", errstr);
+		}
+	}
+
+	/*
 	 * Parse connection string. Build a base connection string that might be
 	 * reused by multiple databases.
 	 */
@@ -1665,14 +1742,10 @@ main(int argc, char **argv)
 	if (pub_base_conninfo == NULL)
 		exit(1);
 
-	if (opt.sub_conninfo_str == NULL)
-	{
-		pg_log_error("no subscriber connection string specified");
-		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
-		exit(1);
-	}
 	pg_log_info("validating connection string on subscriber");
-	sub_base_conninfo = get_base_conninfo(opt.sub_conninfo_str, NULL);
+	appendPQExpBuffer(sub_conninfo_str, "host=%s port=%u user=%s fallback_application_name=%s",
+					opt.socket_dir, opt.sub_port, opt.sub_username, progname);
+	sub_base_conninfo = get_base_conninfo(sub_conninfo_str->data, NULL);
 	if (sub_base_conninfo == NULL)
 		exit(1);
 
@@ -1837,7 +1910,7 @@ main(int argc, char **argv)
 	/* Start subscriber and wait until accepting connections */
 	pg_log_info("starting the subscriber");
 	if (!dry_run)
-		start_standby_server(pg_ctl_path, opt.subscriber_dir, server_start_log);
+		start_standby_server(&opt, pg_ctl_path, server_start_log);
 
 	/* Waiting the subscriber to be promoted */
 	wait_for_end_recovery(dbinfo[0].subconninfo, pg_ctl_path, &opt);

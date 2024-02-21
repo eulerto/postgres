@@ -67,7 +67,8 @@ command_fails(
 		'pg_createsubscriber', '--verbose',
 		'--pgdata', $node_f->data_dir,
 		'--publisher-server', $node_p->connstr('pg1'),
-		'--subscriber-server', $node_f->connstr('pg1'),
+		'--socket-directory', $node_f->host,
+		'--subscriber-port', $node_f->port,
 		'--database', 'pg1',
 		'--database', 'pg2'
 	],
@@ -79,10 +80,11 @@ command_fails(
 		'pg_createsubscriber', '--verbose',
 		'--dry-run', '--pgdata',
 		$node_s->data_dir, '--publisher-server',
-		$node_p->connstr('pg1'), '--subscriber-server',
-		$node_s->connstr('pg1'), '--database',
-		'pg1', '--database',
-		'pg2'
+		$node_p->connstr('pg1'),
+		'--socket-directory', $node_s->host,
+		'--subscriber-port', $node_s->port,
+		'--database', 'pg1',
+		'--database', 'pg2'
 	],
 	'target server must be running');
 
@@ -105,10 +107,11 @@ command_fails(
 		'pg_createsubscriber', '--verbose',
 		'--dry-run', '--pgdata',
 		$node_c->data_dir, '--publisher-server',
-		$node_s->connstr('pg1'), '--subscriber-server',
-		$node_c->connstr('pg1'), '--database',
-		'pg1', '--database',
-		'pg2'
+		$node_s->connstr('pg1'),
+		'--socket-directory', $node_c->host,
+		'--subscriber-port', $node_c->port,
+		'--database', 'pg1',
+		'--database', 'pg2'
 	],
 	'primary server is in recovery');
 
@@ -125,10 +128,11 @@ command_ok(
 		'pg_createsubscriber', '--verbose',
 		'--dry-run', '--pgdata',
 		$node_s->data_dir, '--publisher-server',
-		$node_p->connstr('pg1'), '--subscriber-server',
-		$node_s->connstr('pg1'), '--database',
-		'pg1', '--database',
-		'pg2'
+		$node_p->connstr('pg1'),
+		'--socket-directory', $node_s->host,
+		'--subscriber-port', $node_s->port,
+		'--database', 'pg1',
+		'--database', 'pg2'
 	],
 	'run pg_createsubscriber --dry-run on node S');
 
@@ -142,8 +146,9 @@ command_ok(
 		'pg_createsubscriber', '--verbose',
 		'--dry-run', '--pgdata',
 		$node_s->data_dir, '--publisher-server',
-		$node_p->connstr('pg1'), '--subscriber-server',
-		$node_s->connstr('pg1')
+		$node_p->connstr('pg1'),
+		'--socket-directory', $node_s->host,
+		'--subscriber-port', $node_s->port
 	],
 	'run pg_createsubscriber without --databases');
 
@@ -153,10 +158,11 @@ command_ok(
 		'pg_createsubscriber', '--verbose',
 		'--verbose', '--pgdata',
 		$node_s->data_dir, '--publisher-server',
-		$node_p->connstr('pg1'), '--subscriber-server',
-		$node_s->connstr('pg1'), '--database',
-		'pg1', '--database',
-		'pg2'
+		$node_p->connstr('pg1'),
+		'--socket-directory', $node_s->host,
+		'--subscriber-port', $node_s->port,
+		'--database', 'pg1',
+		'--database', 'pg2'
 	],
 	'run pg_createsubscriber on node S');
 
