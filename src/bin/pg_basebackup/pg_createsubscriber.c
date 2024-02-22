@@ -440,7 +440,7 @@ get_primary_sysid(const char *conninfo)
 
 	conn = connect_database(conninfo, true);
 
-	res = PQexec(conn, "SELECT system_identifier FROM pg_control_system()");
+	res = PQexec(conn, "SELECT system_identifier FROM pg_catalog.pg_control_system()");
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
 		pg_log_error("could not get system identifier: %s",
@@ -744,7 +744,7 @@ check_publisher(struct LogicalRepInfo *dbinfo)
 	if (primary_slot_name)
 	{
 		appendPQExpBuffer(str,
-						  "SELECT 1 FROM pg_replication_slots "
+						  "SELECT 1 FROM pg_catalog.pg_replication_slots "
 						  "WHERE active AND slot_name = '%s'",
 						  primary_slot_name);
 
@@ -882,7 +882,7 @@ check_subscriber(struct LogicalRepInfo *dbinfo)
 	 *------------------------------------------------------------------------
 	 */
 	res = PQexec(conn,
-				 "SELECT setting FROM pg_settings WHERE name IN ("
+				 "SELECT setting FROM pg_catalog.pg_settings WHERE name IN ("
 				 "'max_logical_replication_workers', "
 				 "'max_replication_slots', "
 				 "'max_worker_processes', "
@@ -1009,7 +1009,7 @@ create_logical_replication_slot(PGconn *conn, struct LogicalRepInfo *dbinfo,
 				slot_name, dbinfo->dbname);
 
 	appendPQExpBuffer(str,
-					  "SELECT lsn FROM pg_create_logical_replication_slot('%s', '%s', %s, false, false)",
+					  "SELECT lsn FROM pg_catalog.pg_create_logical_replication_slot('%s', '%s', %s, false, false)",
 					  slot_name, "pgoutput", temporary ? "true" : "false");
 
 	pg_log_debug("command is: %s", str->data);
@@ -1053,7 +1053,7 @@ drop_replication_slot(PGconn *conn, struct LogicalRepInfo *dbinfo,
 	pg_log_info("dropping the replication slot \"%s\" on database \"%s\"",
 				slot_name, dbinfo->dbname);
 
-	appendPQExpBuffer(str, "SELECT pg_drop_replication_slot('%s')", slot_name);
+	appendPQExpBuffer(str, "SELECT pg_catalog.pg_drop_replication_slot('%s')", slot_name);
 
 	pg_log_debug("command is: %s", str->data);
 
