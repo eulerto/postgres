@@ -25,13 +25,9 @@ $node_p->start;
 # Force it to initialize a new cluster instead of copying a
 # previously initdb'd cluster. New cluster has a different system identifier so
 # we can test if the target cluster is a copy of the source cluster.
-{
-	local $ENV{'INITDB_TEMPLATE'} = undef;
-
-	$node_f = PostgreSQL::Test::Cluster->new('node_f');
-	$node_f->init(allows_streaming => 'logical');
-	$node_f->start;
-}
+$node_f = PostgreSQL::Test::Cluster->new('node_f');
+$node_f->init(force_initdb => 1, allows_streaming => 'logical');
+$node_f->start;
 
 # On node P
 # - create databases
