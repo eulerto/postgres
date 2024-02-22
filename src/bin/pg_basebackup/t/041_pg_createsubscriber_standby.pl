@@ -52,7 +52,6 @@ $node_s = PostgreSQL::Test::Cluster->new('node_s');
 $node_s->init_from_backup($node_p, 'backup_1', has_streaming => 1);
 $node_s->append_conf(
 	'postgresql.conf', qq[
-log_min_messages = debug2
 primary_slot_name = '$slotname'
 ]);
 $node_s->set_standby_mode();
@@ -90,10 +89,6 @@ $node_s->start;
 $node_s->backup('backup_2');
 $node_c = PostgreSQL::Test::Cluster->new('node_c');
 $node_c->init_from_backup($node_s, 'backup_2', has_streaming => 1);
-$node_c->append_conf(
-	'postgresql.conf', qq[
-log_min_messages = debug2
-]);
 $node_c->set_standby_mode();
 $node_c->start;
 
