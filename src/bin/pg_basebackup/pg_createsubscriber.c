@@ -1939,6 +1939,7 @@ main(int argc, char **argv)
 		if (conn != NULL)
 		{
 			drop_replication_slot(conn, &dbinfo[0], primary_slot_name);
+			disconnect_database(conn, false);
 		}
 		else
 		{
@@ -1946,7 +1947,6 @@ main(int argc, char **argv)
 						   primary_slot_name);
 			pg_log_warning_hint("Drop this replication slot soon to avoid retention of WAL files.");
 		}
-		disconnect_database(conn, false);
 	}
 
 	/* Stop the subscriber */
