@@ -1022,7 +1022,7 @@ create_logical_replication_slot(PGconn *conn, struct LogicalRepInfo *dbinfo,
 			pg_log_error("could not create replication slot \"%s\" on database \"%s\": %s",
 						 slot_name, dbinfo->dbname,
 						 PQresultErrorMessage(res));
-			return lsn;
+			return NULL;
 		}
 	}
 
