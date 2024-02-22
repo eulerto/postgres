@@ -428,17 +428,17 @@ get_primary_sysid(const char *conninfo)
 	res = PQexec(conn, "SELECT system_identifier FROM pg_control_system()");
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
-		PQclear(res);
-		disconnect_database(conn);
-		pg_fatal("could not get system identifier: %s",
+		pg_log_error("could not get system identifier: %s",
 				 PQresultErrorMessage(res));
+		disconnect_database(conn);
+		exit(1);
 	}
 	if (PQntuples(res) != 1)
 	{
-		PQclear(res);
-		disconnect_database(conn);
-		pg_fatal("could not get system identifier: got %d rows, expected %d row",
+		pg_log_error("could not get system identifier: got %d rows, expected %d row",
 				 PQntuples(res), 1);
+		disconnect_database(conn);
+		exit(1);
 	}
 
 	sysid = strtou64(PQgetvalue(res, 0, 0), NULL, 10);
@@ -560,6 +560,7 @@ setup_publisher(struct LogicalRepInfo *dbinfo)
 		{
 			pg_log_error("could not obtain database OID: %s",
 						 PQresultErrorMessage(res));
+			disconnect_database(conn);
 			return false;
 		}
 
@@ -567,6 +568,7 @@ setup_publisher(struct LogicalRepInfo *dbinfo)
 		{
 			pg_log_error("could not obtain database OID: got %d rows, expected %d rows",
 						 PQntuples(res), 1);
+			disconnect_database(conn);
 			return false;
 		}
 
@@ -631,7 +633,13 @@ server_is_in_recovery(PGconn *conn)
 	res = PQexec(conn, "SELECT pg_catalog.pg_is_in_recovery()");
 
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
-		pg_fatal("could not obtain recovery progress");
+	{
+		pg_log_error("could not obtain recovery progress: %s",
+					PQresultErrorMessage(res));
+		disconnect_database(conn);
+		exit(1);
+	}
+
 
 	ret = strcmp("t", PQgetvalue(res, 0, 0));
 
@@ -1224,6 +1232,7 @@ wait_for_end_recovery(const char *conninfo, const char *pg_ctl_path,
 		if (opt->recovery_timeout > 0 && timer >= opt->recovery_timeout)
 		{
 			stop_standby_server(pg_ctl_path, opt->subscriber_dir);
+			disconnect_database(conn);
 			pg_fatal("recovery timed out");
 		}
 
@@ -1262,10 +1271,10 @@ create_publication(PGconn *conn, struct LogicalRepInfo *dbinfo)
 	res = PQexec(conn, str->data);
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
-		PQclear(res);
-		PQfinish(conn);
-		pg_fatal("could not obtain publication information: %s",
+		pg_log_error("could not obtain publication information: %s",
 				 PQresultErrorMessage(res));
+		disconnect_database(conn);
+		exit(1);
 	}
 
 	if (PQntuples(res) == 1)
@@ -1279,8 +1288,7 @@ create_publication(PGconn *conn, struct LogicalRepInfo *dbinfo)
 		 */
 		pg_log_error("publication \"%s\" already exists", dbinfo->pubname);
 		pg_log_error_hint("Consider renaming this publication before continuing.");
-		PQclear(res);
-		PQfinish(conn);
+		disconnect_database(conn);
 		exit(1);
 	}
 
@@ -1300,17 +1308,16 @@ create_publication(PGconn *conn, struct LogicalRepInfo *dbinfo)
 		res = PQexec(conn, str->data);
 		if (PQresultStatus(res) != PGRES_COMMAND_OK)
 		{
-			PQfinish(conn);
-			pg_fatal("could not create publication \"%s\" on database \"%s\": %s",
-					 dbinfo->pubname, dbinfo->dbname, PQerrorMessage(conn));
+			pg_log_error("could not create publication \"%s\" on database \"%s\": %s",
+					 dbinfo->pubname, dbinfo->dbname, PQresultErrorMessage(res));
+			disconnect_database(conn);
+			exit(1);
 		}
+		PQclear(res);
 	}
 
 	/* for cleanup purposes */
 	dbinfo->made_publication = true;
-
-	if (!dry_run)
-		PQclear(res);
 
 	destroyPQExpBuffer(str);
 }
@@ -1381,9 +1388,10 @@ create_subscription(PGconn *conn, struct LogicalRepInfo *dbinfo)
 		res = PQexec(conn, str->data);
 		if (PQresultStatus(res) != PGRES_COMMAND_OK)
 		{
-			PQfinish(conn);
-			pg_fatal("could not create subscription \"%s\" on database \"%s\": %s",
-					 dbinfo->subname, dbinfo->dbname, PQerrorMessage(conn));
+			pg_log_error("could not create subscription \"%s\" on database \"%s\": %s",
+					 dbinfo->subname, dbinfo->dbname, PQresultErrorMessage(res));
+			disconnect_database(conn);
+			exit(1);
 		}
 	}
 
@@ -1422,18 +1430,18 @@ set_replication_progress(PGconn *conn, struct LogicalRepInfo *dbinfo, const char
 	res = PQexec(conn, str->data);
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
-		PQclear(res);
-		PQfinish(conn);
-		pg_fatal("could not obtain subscription OID: %s",
+		pg_log_error("could not obtain subscription OID: %s",
 				 PQresultErrorMessage(res));
+		disconnect_database(conn);
+		exit(1);
 	}
 
 	if (PQntuples(res) != 1 && !dry_run)
 	{
-		PQclear(res);
-		PQfinish(conn);
-		pg_fatal("could not obtain subscription OID: got %d rows, expected %d rows",
+		pg_log_error("could not obtain subscription OID: got %d rows, expected %d rows",
 				 PQntuples(res), 1);
+		disconnect_database(conn);
+		exit(1);
 	}
 
 	if (dry_run)
@@ -1471,9 +1479,10 @@ set_replication_progress(PGconn *conn, struct LogicalRepInfo *dbinfo, const char
 		res = PQexec(conn, str->data);
 		if (PQresultStatus(res) != PGRES_TUPLES_OK)
 		{
-			PQfinish(conn);
-			pg_fatal("could not set replication progress for the subscription \"%s\": %s",
+			pg_log_error("could not set replication progress for the subscription \"%s\": %s",
 					 dbinfo->subname, PQresultErrorMessage(res));
+			disconnect_database(conn);
+			exit(1);
 		}
 
 		PQclear(res);
@@ -1509,9 +1518,10 @@ enable_subscription(PGconn *conn, struct LogicalRepInfo *dbinfo)
 		res = PQexec(conn, str->data);
 		if (PQresultStatus(res) != PGRES_COMMAND_OK)
 		{
-			PQfinish(conn);
-			pg_fatal("could not enable subscription \"%s\": %s",
-					 dbinfo->subname, PQerrorMessage(conn));
+			pg_log_error("could not enable subscription \"%s\": %s",
+					 dbinfo->subname, PQresultErrorMessage(res));
+			disconnect_database(conn);
+			exit(1);
 		}
 
 		PQclear(res);
