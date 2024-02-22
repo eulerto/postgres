@@ -4,20 +4,13 @@
 # Test using a standby server as the subscriber.
 
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
 use Test::More;
 
-my $node_p;
-my $node_f;
-my $node_s;
-my $node_c;
-my $result;
-my $slotname;
-
 # Set up node P as primary
-$node_p = PostgreSQL::Test::Cluster->new('node_p');
+my $node_p = PostgreSQL::Test::Cluster->new('node_p');
 $node_p->init(allows_streaming => 'logical');
 $node_p->start;
 
@@ -25,7 +18,7 @@ $node_p->start;
 # Force it to initialize a new cluster instead of copying a
 # previously initdb'd cluster. New cluster has a different system identifier so
 # we can test if the target cluster is a copy of the source cluster.
-$node_f = PostgreSQL::Test::Cluster->new('node_f');
+my $node_f = PostgreSQL::Test::Cluster->new('node_f');
 $node_f->init(force_initdb => 1, allows_streaming => 'logical');
 $node_f->start;
 
@@ -42,13 +35,13 @@ $node_p->safe_psql(
 $node_p->safe_psql('pg1', 'CREATE TABLE tbl1 (a text)');
 $node_p->safe_psql('pg1', "INSERT INTO tbl1 VALUES('first row')");
 $node_p->safe_psql('pg2', 'CREATE TABLE tbl2 (a text)');
-$slotname = 'physical_slot';
+my $slotname = 'physical_slot';
 $node_p->safe_psql('pg2',
 	"SELECT pg_create_physical_replication_slot('$slotname')");
 
 # Set up node S as standby linking to node P
 $node_p->backup('backup_1');
-$node_s = PostgreSQL::Test::Cluster->new('node_s');
+my $node_s = PostgreSQL::Test::Cluster->new('node_s');
 $node_s->init_from_backup($node_p, 'backup_1', has_streaming => 1);
 $node_s->append_conf(
 	'postgresql.conf', qq[
@@ -87,7 +80,7 @@ $node_s->start;
 
 # Set up node C as standby linking to node S
 $node_s->backup('backup_2');
-$node_c = PostgreSQL::Test::Cluster->new('node_c');
+my $node_c = PostgreSQL::Test::Cluster->new('node_c');
 $node_c->init_from_backup($node_s, 'backup_2', has_streaming => 1);
 $node_c->set_standby_mode();
 $node_c->start;
