@@ -66,8 +66,8 @@ static char *concat_conninfo_dbname(const char *conninfo, const char *dbname);
 static struct LogicalRepInfo *store_pub_sub_info(SimpleStringList dbnames,
 										  const char *pub_base_conninfo,
 										  const char *sub_base_conninfo);
-static PGconn *connect_database(const char *conninfo);
-static void disconnect_database(PGconn *conn);
+static PGconn *connect_database(const char *conninfo, bool exit_on_error);
+static void disconnect_database(PGconn *conn, bool exit_on_error);
 static uint64 get_primary_sysid(const char *conninfo);
 static uint64 get_standby_sysid(const char *datadir);
 static void modify_subscriber_sysid(const char *pg_resetwal_path,
@@ -147,14 +147,14 @@ cleanup_objects_atexit(void)
 
 		if (dbinfo[i].made_publication || dbinfo[i].made_replslot)
 		{
-			conn = connect_database(dbinfo[i].pubconninfo);
+			conn = connect_database(dbinfo[i].pubconninfo, false);
 			if (conn != NULL)
 			{
 				if (dbinfo[i].made_publication)
 					drop_publication(conn, &dbinfo[i]);
 				if (dbinfo[i].made_replslot)
 					drop_replication_slot(conn, &dbinfo[i], dbinfo[i].subname);
-				disconnect_database(conn);
+				disconnect_database(conn, false);
 			}
 		}
 	}
@@ -373,8 +373,12 @@ store_pub_sub_info(SimpleStringList dbnames, const char *pub_base_conninfo,
 	return dbinfo;
 }
 
+/*
+ * Open a new connection. If exit_on_error is true, it has an undesired
+ * condition and it should exit immediately.
+ */
 static PGconn *
-connect_database(const char *conninfo)
+connect_database(const char *conninfo, bool exit_on_error)
 {
 	PGconn	   *conn;
 	PGresult   *res;
@@ -384,6 +388,9 @@ connect_database(const char *conninfo)
 	{
 		pg_log_error("connection to database failed: %s",
 					 PQerrorMessage(conn));
+		if (exit_on_error)
+			exit(1);
+
 		return NULL;
 	}
 
@@ -393,6 +400,9 @@ connect_database(const char *conninfo)
 	{
 		pg_log_error("could not clear search_path: %s",
 					 PQresultErrorMessage(res));
+		if (exit_on_error)
+			exit(1);
+
 		return NULL;
 	}
 	PQclear(res);
@@ -400,12 +410,19 @@ connect_database(const char *conninfo)
 	return conn;
 }
 
+/*
+ * Close the connection. If exit_on_error is true, it has an undesired
+ * condition and it should exit immediately.
+ */
 static void
-disconnect_database(PGconn *conn)
+disconnect_database(PGconn *conn, bool exit_on_error)
 {
 	Assert(conn != NULL);
 
 	PQfinish(conn);
+
+	if (exit_on_error)
+		exit(1);
 }
 
 /*
@@ -421,24 +438,20 @@ get_primary_sysid(const char *conninfo)
 
 	pg_log_info("getting system identifier from publisher");
 
-	conn = connect_database(conninfo);
-	if (conn == NULL)
-		exit(1);
+	conn = connect_database(conninfo, true);
 
 	res = PQexec(conn, "SELECT system_identifier FROM pg_control_system()");
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
 		pg_log_error("could not get system identifier: %s",
 				 PQresultErrorMessage(res));
-		disconnect_database(conn);
-		exit(1);
+		disconnect_database(conn, true);
 	}
 	if (PQntuples(res) != 1)
 	{
 		pg_log_error("could not get system identifier: got %d rows, expected %d row",
 				 PQntuples(res), 1);
-		disconnect_database(conn);
-		exit(1);
+		disconnect_database(conn, true);
 	}
 
 	sysid = strtou64(PQgetvalue(res, 0, 0), NULL, 10);
@@ -447,7 +460,7 @@ get_primary_sysid(const char *conninfo)
 				(unsigned long long) sysid);
 
 	PQclear(res);
-	disconnect_database(conn);
+	disconnect_database(conn, false);
 
 	return sysid;
 }
@@ -549,9 +562,7 @@ setup_publisher(struct LogicalRepInfo *dbinfo)
 		char		pubname[NAMEDATALEN];
 		char		replslotname[NAMEDATALEN];
 
-		conn = connect_database(dbinfo[i].pubconninfo);
-		if (conn == NULL)
-			exit(1);
+		conn = connect_database(dbinfo[i].pubconninfo, true);
 
 		res = PQexec(conn,
 					 "SELECT oid FROM pg_catalog.pg_database "
@@ -560,7 +571,7 @@ setup_publisher(struct LogicalRepInfo *dbinfo)
 		{
 			pg_log_error("could not obtain database OID: %s",
 						 PQresultErrorMessage(res));
-			disconnect_database(conn);
+			disconnect_database(conn, false);
 			return false;
 		}
 
@@ -568,7 +579,7 @@ setup_publisher(struct LogicalRepInfo *dbinfo)
 		{
 			pg_log_error("could not obtain database OID: got %d rows, expected %d rows",
 						 PQntuples(res), 1);
-			disconnect_database(conn);
+			disconnect_database(conn, false);
 			return false;
 		}
 
@@ -615,7 +626,7 @@ setup_publisher(struct LogicalRepInfo *dbinfo)
 		else
 			return false;
 
-		disconnect_database(conn);
+		disconnect_database(conn, false);
 	}
 
 	return true;
@@ -636,8 +647,7 @@ server_is_in_recovery(PGconn *conn)
 	{
 		pg_log_error("could not obtain recovery progress: %s",
 					PQresultErrorMessage(res));
-		disconnect_database(conn);
-		exit(1);
+		disconnect_database(conn, true);
 	}
 
 
@@ -666,9 +676,7 @@ check_publisher(struct LogicalRepInfo *dbinfo)
 
 	pg_log_info("checking settings on publisher");
 
-	conn = connect_database(dbinfo[0].pubconninfo);
-	if (conn == NULL)
-		exit(1);
+	conn = connect_database(dbinfo[0].pubconninfo, true);
 
 	/*
 	 * If the primary server is in recovery (i.e. cascading replication),
@@ -765,7 +773,7 @@ check_publisher(struct LogicalRepInfo *dbinfo)
 		PQclear(res);
 	}
 
-	disconnect_database(conn);
+	disconnect_database(conn, false);
 
 	if (strcmp(wal_level, "logical") != 0)
 	{
@@ -810,9 +818,7 @@ check_subscriber(struct LogicalRepInfo *dbinfo)
 
 	pg_log_info("checking settings on subscriber");
 
-	conn = connect_database(dbinfo[0].subconninfo);
-	if (conn == NULL)
-		exit(1);
+	conn = connect_database(dbinfo[0].subconninfo, true);
 
 	/* The target server must be a standby */
 	if (!server_is_in_recovery(conn))
@@ -905,7 +911,7 @@ check_subscriber(struct LogicalRepInfo *dbinfo)
 
 	PQclear(res);
 
-	disconnect_database(conn);
+	disconnect_database(conn, false);
 
 	if (max_repslots < num_dbs)
 	{
@@ -950,9 +956,7 @@ setup_subscriber(struct LogicalRepInfo *dbinfo, const char *consistent_lsn)
 		PGconn	   *conn;
 
 		/* Connect to subscriber. */
-		conn = connect_database(dbinfo[i].subconninfo);
-		if (conn == NULL)
-			exit(1);
+		conn = connect_database(dbinfo[i].subconninfo, true);
 
 		/*
 		 * Since the publication was created before the consistent LSN, it is
@@ -969,7 +973,7 @@ setup_subscriber(struct LogicalRepInfo *dbinfo, const char *consistent_lsn)
 		/* Enable subscription */
 		enable_subscription(conn, &dbinfo[i]);
 
-		disconnect_database(conn);
+		disconnect_database(conn, false);
 	}
 
 	return true;
@@ -1209,9 +1213,7 @@ wait_for_end_recovery(const char *conninfo, const char *pg_ctl_path,
 
 	pg_log_info("waiting the target server to reach the consistent state");
 
-	conn = connect_database(conninfo);
-	if (conn == NULL)
-		exit(1);
+	conn = connect_database(conninfo, true);
 
 	for (;;)
 	{
@@ -1232,8 +1234,8 @@ wait_for_end_recovery(const char *conninfo, const char *pg_ctl_path,
 		if (opt->recovery_timeout > 0 && timer >= opt->recovery_timeout)
 		{
 			stop_standby_server(pg_ctl_path, opt->subscriber_dir);
-			disconnect_database(conn);
-			pg_fatal("recovery timed out");
+			pg_log_error("recovery timed out");
+			disconnect_database(conn, true);
 		}
 
 		/* Keep waiting */
@@ -1242,7 +1244,7 @@ wait_for_end_recovery(const char *conninfo, const char *pg_ctl_path,
 		timer += WAIT_INTERVAL;
 	}
 
-	disconnect_database(conn);
+	disconnect_database(conn, false);
 
 	if (status == POSTMASTER_STILL_STARTING)
 		pg_fatal("server did not end recovery");
@@ -1273,8 +1275,7 @@ create_publication(PGconn *conn, struct LogicalRepInfo *dbinfo)
 	{
 		pg_log_error("could not obtain publication information: %s",
 				 PQresultErrorMessage(res));
-		disconnect_database(conn);
-		exit(1);
+		disconnect_database(conn, true);
 	}
 
 	if (PQntuples(res) == 1)
@@ -1288,8 +1289,7 @@ create_publication(PGconn *conn, struct LogicalRepInfo *dbinfo)
 		 */
 		pg_log_error("publication \"%s\" already exists", dbinfo->pubname);
 		pg_log_error_hint("Consider renaming this publication before continuing.");
-		disconnect_database(conn);
-		exit(1);
+		disconnect_database(conn, true);
 	}
 
 	PQclear(res);
@@ -1310,8 +1310,7 @@ create_publication(PGconn *conn, struct LogicalRepInfo *dbinfo)
 		{
 			pg_log_error("could not create publication \"%s\" on database \"%s\": %s",
 					 dbinfo->pubname, dbinfo->dbname, PQresultErrorMessage(res));
-			disconnect_database(conn);
-			exit(1);
+			disconnect_database(conn, true);
 		}
 		PQclear(res);
 	}
@@ -1390,8 +1389,7 @@ create_subscription(PGconn *conn, struct LogicalRepInfo *dbinfo)
 		{
 			pg_log_error("could not create subscription \"%s\" on database \"%s\": %s",
 					 dbinfo->subname, dbinfo->dbname, PQresultErrorMessage(res));
-			disconnect_database(conn);
-			exit(1);
+			disconnect_database(conn, true);
 		}
 	}
 
@@ -1432,16 +1430,14 @@ set_replication_progress(PGconn *conn, struct LogicalRepInfo *dbinfo, const char
 	{
 		pg_log_error("could not obtain subscription OID: %s",
 				 PQresultErrorMessage(res));
-		disconnect_database(conn);
-		exit(1);
+		disconnect_database(conn, true);
 	}
 
 	if (PQntuples(res) != 1 && !dry_run)
 	{
 		pg_log_error("could not obtain subscription OID: got %d rows, expected %d rows",
 				 PQntuples(res), 1);
-		disconnect_database(conn);
-		exit(1);
+		disconnect_database(conn, true);
 	}
 
 	if (dry_run)
@@ -1481,8 +1477,7 @@ set_replication_progress(PGconn *conn, struct LogicalRepInfo *dbinfo, const char
 		{
 			pg_log_error("could not set replication progress for the subscription \"%s\": %s",
 					 dbinfo->subname, PQresultErrorMessage(res));
-			disconnect_database(conn);
-			exit(1);
+			disconnect_database(conn, true);
 		}
 
 		PQclear(res);
@@ -1520,8 +1515,7 @@ enable_subscription(PGconn *conn, struct LogicalRepInfo *dbinfo)
 		{
 			pg_log_error("could not enable subscription \"%s\": %s",
 					 dbinfo->subname, PQresultErrorMessage(res));
-			disconnect_database(conn);
-			exit(1);
+			disconnect_database(conn, true);
 		}
 
 		PQclear(res);
@@ -1870,9 +1864,7 @@ main(int argc, char **argv)
 	 * consistent LSN but it should be changed after adding pg_basebackup
 	 * support.
 	 */
-	conn = connect_database(dbinfo[0].pubconninfo);
-	if (conn == NULL)
-		exit(1);
+	conn = connect_database(dbinfo[0].pubconninfo, true);
 	consistent_lsn = create_logical_replication_slot(conn, &dbinfo[0], true);
 
 	/*
@@ -1913,7 +1905,7 @@ main(int argc, char **argv)
 						  consistent_lsn);
 		WriteRecoveryConfig(conn, opt.subscriber_dir, recoveryconfcontents);
 	}
-	disconnect_database(conn);
+	disconnect_database(conn, false);
 
 	pg_log_debug("recovery parameters:\n%s", recoveryconfcontents->data);
 
@@ -1943,7 +1935,7 @@ main(int argc, char **argv)
 	 */
 	if (primary_slot_name != NULL)
 	{
-		conn = connect_database(dbinfo[0].pubconninfo);
+		conn = connect_database(dbinfo[0].pubconninfo, false);
 		if (conn != NULL)
 		{
 			drop_replication_slot(conn, &dbinfo[0], primary_slot_name);
@@ -1954,7 +1946,7 @@ main(int argc, char **argv)
 						   primary_slot_name);
 			pg_log_warning_hint("Drop this replication slot soon to avoid retention of WAL files.");
 		}
-		disconnect_database(conn);
+		disconnect_database(conn, false);
 	}
 
 	/* Stop the subscriber */
