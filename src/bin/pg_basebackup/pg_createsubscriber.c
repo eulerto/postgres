@@ -691,7 +691,8 @@ check_publisher(struct LogicalRepInfo *dbinfo)
 	 * we should check it to make sure it won't fail.
 	 *
 	 * - wal_level = logical
-	 * - max_replication_slots >= current + number of dbs to be converted
+	 * - max_replication_slots >= current + number of dbs to be converted +
+	 *                            one temporary logical replication slot
 	 * - max_wal_senders >= current + number of dbs to be converted
 	 * -----------------------------------------------------------------------
 	 */
@@ -781,12 +782,13 @@ check_publisher(struct LogicalRepInfo *dbinfo)
 		return false;
 	}
 
-	if (max_repslots - cur_repslots < num_dbs)
+	/* One additional temporary logical replication slot */
+	if (max_repslots - cur_repslots < num_dbs + 1)
 	{
 		pg_log_error("publisher requires %d replication slots, but only %d remain",
-					 num_dbs, max_repslots - cur_repslots);
+					 num_dbs + 1, max_repslots - cur_repslots);
 		pg_log_error_hint("Consider increasing max_replication_slots to at least %d.",
-						  cur_repslots + num_dbs);
+						  cur_repslots + num_dbs + 1);
 		return false;
 	}
 
@@ -824,6 +826,29 @@ check_subscriber(struct LogicalRepInfo *dbinfo)
 	if (!server_is_in_recovery(conn))
 	{
 		pg_log_error("The target server is not a standby");
+		return false;
+	}
+
+	/*
+	 * The target server must not be a primary. The reason is that the system
+	 * identifier is modified by pg_resetwal in one of the last steps. Since
+	 * physical replication requires same system identifier, replication will
+	 * break as soon as the system identifier is changed on the target server.
+	 */
+	res = PQexec(conn,
+			"SELECT 1 FROM pg_catalog.pg_stat_activity"
+			" WHERE backend_type = 'walsender'");
+	if (PQresultStatus(res) != PGRES_TUPLES_OK)
+	{
+		pg_log_error("could not obtain activity of server processes: %s",
+				PQresultErrorMessage(res));
+		return false;
+	}
+
+	if (PQntuples(res) > 0)
+	{
+		pg_log_error("target server is a primary");
+		pg_log_error_hint("The target server must not have a standby server. Stop it before continuing.");
 		return false;
 	}
 
