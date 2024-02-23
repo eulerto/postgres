@@ -1235,6 +1235,9 @@ wait_for_end_recovery(const char *conninfo, const char *pg_ctl_path,
 	PGconn	   *conn;
 	int			status = POSTMASTER_STILL_STARTING;
 	int			timer = 0;
+	int			count = 0;		/* number of consecutive connection attempts */
+
+#define NUM_CONN_ATTEMPTS	5
 
 	pg_log_info("waiting the target server to reach the consistent state");
 
@@ -1242,6 +1245,7 @@ wait_for_end_recovery(const char *conninfo, const char *pg_ctl_path,
 
 	for (;;)
 	{
+		PGresult	*res;
 		bool in_recovery = server_is_in_recovery(conn);
 
 		/*
@@ -1254,6 +1258,28 @@ wait_for_end_recovery(const char *conninfo, const char *pg_ctl_path,
 			recovery_ended = true;
 			break;
 		}
+
+		/*
+		 * If it is still in recovery, make sure the target server is connected
+		 * to the primary so it can receive the required WAL to finish the
+		 * recovery process. If it is disconnected try NUM_CONN_ATTEMPTS in a
+		 * row and bail out if not succeed.
+		 */
+		res = PQexec(conn,
+						"SELECT 1 FROM pg_catalog.pg_stat_wal_receiver");
+		if (PQntuples(res) == 0)
+		{
+			if (count++ > NUM_CONN_ATTEMPTS)
+			{
+				stop_standby_server(pg_ctl_path, opt->subscriber_dir);
+				pg_log_error("standby server disconnected from the primary");
+				break;
+			}
+		}
+		else
+			count = 0;		/* reset counter if it connects again */
+
+		PQclear(res);
 
 		/* Bail out after recovery_timeout seconds if this option is set */
 		if (opt->recovery_timeout > 0 && timer >= opt->recovery_timeout)
