@@ -108,7 +108,6 @@ tests += {
       't/020_pg_receivewal.pl',
       't/030_pg_recvlogical.pl',
       't/040_pg_createsubscriber.pl',
-      't/041_pg_createsubscriber_standby.pl',
     ],
   },
 }
