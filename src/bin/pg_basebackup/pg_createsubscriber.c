@@ -76,7 +76,7 @@ static bool server_is_in_recovery(PGconn *conn);
 static bool check_publisher(struct LogicalRepInfo *dbinfo);
 static bool setup_publisher(struct LogicalRepInfo *dbinfo);
 static bool check_subscriber(struct LogicalRepInfo *dbinfo);
-static bool setup_subscriber(struct LogicalRepInfo *dbinfo,
+static void setup_subscriber(struct LogicalRepInfo *dbinfo,
 							 const char *consistent_lsn);
 static char *create_logical_replication_slot(PGconn *conn,
 											 struct LogicalRepInfo *dbinfo,
@@ -973,7 +973,7 @@ check_subscriber(struct LogicalRepInfo *dbinfo)
  * replication and enable the subscriptions. That's the last step for logical
  * repliation setup.
  */
-static bool
+static void
 setup_subscriber(struct LogicalRepInfo *dbinfo, const char *consistent_lsn)
 {
 	for (int i = 0; i < num_dbs; i++)
@@ -1000,8 +1000,6 @@ setup_subscriber(struct LogicalRepInfo *dbinfo, const char *consistent_lsn)
 
 		disconnect_database(conn, false);
 	}
-
-	return true;
 }
 
 /*
@@ -1975,8 +1973,7 @@ main(int argc, char **argv)
 	 * set_replication_progress). It also cleans up publications created by
 	 * this tool and replication to the standby.
 	 */
-	if (!setup_subscriber(dbinfo, consistent_lsn))
-		exit(1);
+	setup_subscriber(dbinfo, consistent_lsn);
 
 	/*
 	 * If the primary_slot_name exists on primary, drop it.
