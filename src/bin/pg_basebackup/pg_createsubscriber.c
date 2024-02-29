@@ -29,7 +29,7 @@
 #include "getopt_long.h"
 
 #define	DEFAULT_SUB_PORT	50432
-#define	PGS_OUTPUT_DIR	"pg_createsubscriber_output.d"
+#define	BASE_OUTPUT_DIR		"pg_createsubscriber_output.d"
 
 /* Command-line options */
 struct CreateSubscriberOptions
@@ -1078,8 +1078,8 @@ drop_replication_slot(PGconn *conn, struct LogicalRepInfo *dbinfo,
 
 /*
  * Create a directory to store any log information. Adjust the permissions.
- * Return a file name (full path) that's used by the standby server when it is
- * run.
+ * Return a file name (full path) that's used by the standby server when it
+ * starts the transformation.
  */
 static char *
 setup_server_logfile(const char *datadir)
@@ -1092,7 +1092,7 @@ setup_server_logfile(const char *datadir)
 	char	   *filename;
 
 	base_dir = (char *) pg_malloc0(MAXPGPATH);
-	len = snprintf(base_dir, MAXPGPATH, "%s/%s", datadir, PGS_OUTPUT_DIR);
+	len = snprintf(base_dir, MAXPGPATH, "%s/%s", datadir, BASE_OUTPUT_DIR);
 	if (len >= MAXPGPATH)
 		pg_fatal("directory path for subscriber is too long");
 
@@ -1111,8 +1111,8 @@ setup_server_logfile(const char *datadir)
 			 ".%03d", (int) (time.tv_usec / 1000));
 
 	filename = (char *) pg_malloc0(MAXPGPATH);
-	len = snprintf(filename, MAXPGPATH, "%s/%s/server_start_%s.log", datadir,
-				   PGS_OUTPUT_DIR, timebuf);
+	len = snprintf(filename, MAXPGPATH, "%s/server_start_%s.log", base_dir, timebuf);
+	pg_log_debug("log file is: %s", filename);
 	if (len >= MAXPGPATH)
 		pg_fatal("log file path is too long");
 
