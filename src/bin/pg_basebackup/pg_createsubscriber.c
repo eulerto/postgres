@@ -84,10 +84,10 @@ static char *create_logical_replication_slot(PGconn *conn,
 static void drop_replication_slot(PGconn *conn, struct LogicalRepInfo *dbinfo,
 								  const char *slot_name);
 static char *setup_server_logfile(const char *datadir);
+static void pg_ctl_status(const char *pg_ctl_cmd, int rc, int action);
 static void start_standby_server(struct CreateSubscriberOptions *opt,
 								 const char *pg_ctl_path, const char *logfile);
 static void stop_standby_server(const char *pg_ctl_path, const char *datadir);
-static void pg_ctl_status(const char *pg_ctl_cmd, int rc, int action);
 static void wait_for_end_recovery(const char *conninfo, const char *pg_ctl_path,
 								  struct CreateSubscriberOptions *opt);
 static void create_publication(PGconn *conn, struct LogicalRepInfo *dbinfo);
@@ -1124,6 +1124,44 @@ setup_server_logfile(const char *datadir)
 	return filename;
 }
 
+/*
+ * Reports a suitable message if pg_ctl fails.
+ */
+static void
+pg_ctl_status(const char *pg_ctl_cmd, int rc, int action)
+{
+	if (rc != 0)
+	{
+		if (WIFEXITED(rc))
+		{
+			pg_log_error("pg_ctl failed with exit code %d", WEXITSTATUS(rc));
+		}
+		else if (WIFSIGNALED(rc))
+		{
+#if defined(WIN32)
+			pg_log_error("pg_ctl was terminated by exception 0x%X",
+						 WTERMSIG(rc));
+			pg_log_error_detail("See C include file \"ntstatus.h\" for a description of the hexadecimal value.");
+#else
+			pg_log_error("pg_ctl was terminated by signal %d: %s",
+						 WTERMSIG(rc), pg_strsignal(WTERMSIG(rc)));
+#endif
+		}
+		else
+		{
+			pg_log_error("pg_ctl exited with unrecognized status %d", rc);
+		}
+
+		pg_log_error_detail("The failed command was: %s", pg_ctl_cmd);
+		exit(1);
+	}
+
+	if (action)
+		pg_log_info("postmaster was started");
+	else
+		pg_log_info("postmaster was stopped");
+}
+
 static void
 start_standby_server(struct CreateSubscriberOptions *opt, const char *pg_ctl_path,
 					 const char *logfile)
@@ -1168,44 +1206,6 @@ stop_standby_server(const char *pg_ctl_path, const char *datadir)
 						  datadir);
 	rc = system(pg_ctl_cmd);
 	pg_ctl_status(pg_ctl_cmd, rc, 0);
-}
-
-/*
- * Reports a suitable message if pg_ctl fails.
- */
-static void
-pg_ctl_status(const char *pg_ctl_cmd, int rc, int action)
-{
-	if (rc != 0)
-	{
-		if (WIFEXITED(rc))
-		{
-			pg_log_error("pg_ctl failed with exit code %d", WEXITSTATUS(rc));
-		}
-		else if (WIFSIGNALED(rc))
-		{
-#if defined(WIN32)
-			pg_log_error("pg_ctl was terminated by exception 0x%X",
-						 WTERMSIG(rc));
-			pg_log_error_detail("See C include file \"ntstatus.h\" for a description of the hexadecimal value.");
-#else
-			pg_log_error("pg_ctl was terminated by signal %d: %s",
-						 WTERMSIG(rc), pg_strsignal(WTERMSIG(rc)));
-#endif
-		}
-		else
-		{
-			pg_log_error("pg_ctl exited with unrecognized status %d", rc);
-		}
-
-		pg_log_error_detail("The failed command was: %s", pg_ctl_cmd);
-		exit(1);
-	}
-
-	if (action)
-		pg_log_info("postmaster was started");
-	else
-		pg_log_info("postmaster was stopped");
 }
 
 /*
