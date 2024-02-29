@@ -86,7 +86,8 @@ static void drop_replication_slot(PGconn *conn, struct LogicalRepInfo *dbinfo,
 static char *setup_server_logfile(const char *datadir);
 static void pg_ctl_status(const char *pg_ctl_cmd, int rc);
 static void start_standby_server(struct CreateSubscriberOptions *opt,
-								 const char *pg_ctl_path, const char *logfile);
+								 const char *pg_ctl_path, const char *logfile,
+								 bool with_options);
 static void stop_standby_server(const char *pg_ctl_path, const char *datadir);
 static void wait_for_end_recovery(const char *conninfo, const char *pg_ctl_path,
 								  struct CreateSubscriberOptions *opt);
@@ -1185,9 +1186,9 @@ pg_ctl_status(const char *pg_ctl_cmd, int rc)
 
 static void
 start_standby_server(struct CreateSubscriberOptions *opt, const char *pg_ctl_path,
-					 const char *logfile)
+					 const char *logfile, bool with_options)
 {
-	char	   *pg_ctl_cmd;
+	PQExpBuffer pg_ctl_cmd = createPQExpBuffer();
 	char		socket_string[MAXPGPATH + 200];
 	int			rc;
 
@@ -1209,12 +1210,15 @@ start_standby_server(struct CreateSubscriberOptions *opt, const char *pg_ctl_pat
 				 opt->socket_dir);
 #endif
 
-	pg_ctl_cmd = psprintf("\"%s\" start -D \"%s\" -s -l \"%s\" -o \"-p %u%s\"",
-						  pg_ctl_path, opt->subscriber_dir, logfile,
-						  opt->sub_port, socket_string);
-	pg_log_debug("pg_ctl command is: %s", pg_ctl_cmd);
-	rc = system(pg_ctl_cmd);
-	pg_ctl_status(pg_ctl_cmd, rc);
+	appendPQExpBuffer(pg_ctl_cmd, "\"%s\" start -D \"%s\" -s",
+							pg_ctl_path, opt->subscriber_dir);
+	if (with_options)
+		appendPQExpBuffer(pg_ctl_cmd, " -l \"%s\" -o \"-p %u%s\"",
+							logfile, opt->sub_port, socket_string);
+	pg_log_debug("pg_ctl command is: %s", pg_ctl_cmd->data);
+	rc = system(pg_ctl_cmd->data);
+	pg_ctl_status(pg_ctl_cmd->data, rc);
+	destroyPQExpBuffer(pg_ctl_cmd);
 	pg_log_info("server was started");
 }
 
@@ -1896,7 +1900,7 @@ main(int argc, char **argv)
 	 * transformation steps.
 	 */
 	pg_log_info("starting the standby with command-line options");
-	start_standby_server(&opt, pg_ctl_path, server_start_log);
+	start_standby_server(&opt, pg_ctl_path, server_start_log, true);
 
 	/* Check if the standby server is ready for logical replication */
 	check_subscriber(dbinfo);
@@ -1980,7 +1984,7 @@ main(int argc, char **argv)
 	 */
 	pg_log_info("stopping and starting the subscriber");
 	stop_standby_server(pg_ctl_path, opt.subscriber_dir);
-	start_standby_server(&opt, pg_ctl_path, server_start_log);
+	start_standby_server(&opt, pg_ctl_path, server_start_log, true);
 
 	/* Waiting the subscriber to be promoted */
 	wait_for_end_recovery(dbinfo[0].subconninfo, pg_ctl_path, &opt);
@@ -2029,6 +2033,15 @@ main(int argc, char **argv)
 	 */
 	if (!dry_run && !opt.retain)
 		unlink(server_start_log);
+
+	/*
+	 * In dry run mode, the server is restarted with the provided command-line
+	 * options so validation can be applied in the target server. In order to
+	 * preserve the initial state of the server (running), start it without the
+	 * command-line options.
+	 */
+	if (dry_run)
+		start_standby_server(&opt, pg_ctl_path, server_start_log, false);
 
 	success = true;
 
