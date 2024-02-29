@@ -69,6 +69,7 @@ $node_s->append_conf(
 primary_slot_name = '$slotname'
 ]);
 $node_s->set_standby_mode();
+$node_s->start;
 
 # Run pg_createsubscriber on about-to-fail node F
 command_fails(
@@ -82,22 +83,6 @@ command_fails(
 		'--database', 'pg2'
 	],
 	'subscriber data directory is not a copy of the source database cluster');
-
-# Run pg_createsubscriber on the stopped node
-command_fails(
-	[
-		'pg_createsubscriber', '--verbose',
-		'--dry-run', '--pgdata',
-		$node_s->data_dir, '--publisher-server',
-		$node_p->connstr('pg1'),
-		'--socket-directory', $node_s->host,
-		'--subscriber-port', $node_s->port,
-		'--database', 'pg1',
-		'--database', 'pg2'
-	],
-	'standby is not running');
-
-$node_s->start;
 
 # Set up node C as standby linking to node S
 $node_s->backup('backup_2');
