@@ -1885,43 +1885,43 @@ main(int argc, char **argv)
 	snprintf(pidfile, MAXPGPATH, "%s/postmaster.pid", opt.subscriber_dir);
 
 	/*
-	 * The standby server must be running. That's because some checks will be
-	 * done (is it ready for a logical replication setup?). After that, stop
-	 * the subscriber in preparation to modify some recovery parameters that
-	 * require a restart.
+	 * If the standby server is running, stop it. Some parameters (that can
+	 * only be set at server start) are informed by command-line options.
 	 */
 	if (stat(pidfile, &statbuf) == 0)
 	{
-		/* Check if the standby server is ready for logical replication */
-		check_subscriber(dbinfo);
 
-		/*
-		 * Check if the primary server is ready for logical replication. This
-		 * routine checks if a replication slot is in use on primary so it
-		 * relies on check_subscriber() to obtain the primary_slot_name.
-		 * That's why it is called after it.
-		 */
-		check_publisher(dbinfo);
-
-		/*
-		 * Create the required objects for each database on publisher. This
-		 * step is here mainly because if we stop the standby we cannot verify
-		 * if the primary slot is in use. We could use an extra connection for
-		 * it but it doesn't seem worth.
-		 */
-		setup_publisher(dbinfo);
-
-		/* Stop the standby server */
 		pg_log_info("standby is up and running");
 		pg_log_info("stopping the server to start the transformation steps");
 		stop_standby_server(pg_ctl_path, opt.subscriber_dir);
 	}
-	else
-	{
-		pg_log_error("standby is not running");
-		pg_log_error_hint("Start the standby and try again.");
-		exit(1);
-	}
+
+	/*
+	 * Start a short-lived standby server with temporary parameters (provided
+	 * by command-line options). The goal is to avoid connections during the
+	 * transformation steps.
+	 */
+	pg_log_info("starting the standby with command-line options");
+	start_standby_server(&opt, pg_ctl_path, server_start_log);
+
+	/* Check if the standby server is ready for logical replication */
+	check_subscriber(dbinfo);
+
+	/*
+	 * Check if the primary server is ready for logical replication. This
+	 * routine checks if a replication slot is in use on primary so it
+	 * relies on check_subscriber() to obtain the primary_slot_name.
+	 * That's why it is called after it.
+	 */
+	check_publisher(dbinfo);
+
+	/*
+	 * Create the required objects for each database on publisher. This
+	 * step is here mainly because if we stop the standby we cannot verify
+	 * if the primary slot is in use. We could use an extra connection for
+	 * it but it doesn't seem worth.
+	 */
+	setup_publisher(dbinfo);
 
 	/*
 	 * Create a temporary logical replication slot to get a consistent LSN.
@@ -1980,8 +1980,12 @@ main(int argc, char **argv)
 
 	pg_log_debug("recovery parameters:\n%s", recoveryconfcontents->data);
 
-	/* Start subscriber and wait until accepting connections */
-	pg_log_info("starting the subscriber");
+	/*
+	 * Restart subscriber so the recovery parameters will take effect. Wait
+	 * until accepting connections.
+	 */
+	pg_log_info("stopping and starting the subscriber");
+	stop_standby_server(pg_ctl_path, opt.subscriber_dir);
 	start_standby_server(&opt, pg_ctl_path, server_start_log);
 
 	/* Waiting the subscriber to be promoted */
