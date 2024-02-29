@@ -136,14 +136,20 @@ cleanup_objects_atexit(void)
 	if (success)
 		return;
 
+	/*
+	 * If the server is promoted, there is no way to use the current setup
+	 * again. Warn the user that a new replication setup should be done before
+	 * trying again.
+	 */
+	if (recovery_ended)
+	{
+		pg_log_warning("pg_createsubscriber failed after the end of recovery");
+		pg_log_warning_hint("The target server cannot be used as a physical replica anymore.");
+		pg_log_warning_hint("You must recreate the physical replica before continuing.");
+	}
+
 	for (i = 0; i < num_dbs; i++)
 	{
-		if (recovery_ended)
-		{
-			pg_log_warning("pg_createsubscriber failed after the end of recovery");
-			pg_log_warning_hint("The target server cannot be used as a physical replica anymore.");
-			pg_log_warning_hint("You must recreate the physical replica before continuing.");
-		}
 
 		if (dbinfo[i].made_publication || dbinfo[i].made_replslot)
 		{
@@ -155,6 +161,26 @@ cleanup_objects_atexit(void)
 				if (dbinfo[i].made_replslot)
 					drop_replication_slot(conn, &dbinfo[i], dbinfo[i].subname);
 				disconnect_database(conn, false);
+			}
+			else
+			{
+				/*
+				 * If a connection could not be established, inform the user
+				 * that some objects were left on primary and should be removed
+				 * before trying again.
+				 */
+				if (dbinfo[i].made_publication)
+				{
+					pg_log_warning("There might be a publication \"%s\" in database \"%s\" on primary",
+									dbinfo[i].pubname, dbinfo[i].dbname);
+					pg_log_warning_hint("Consider dropping this publication before trying again.");
+				}
+				if (dbinfo[i].made_replslot)
+				{
+					pg_log_warning("There might be a replication slot \"%s\" in database \"%s\" on primary",
+									dbinfo[i].subname, dbinfo[i].dbname);
+					pg_log_warning_hint("Drop this replication slot soon to avoid retention of WAL files.");
+				}
 			}
 		}
 	}
@@ -1038,7 +1064,7 @@ create_logical_replication_slot(PGconn *conn, struct LogicalRepInfo *dbinfo,
 		PQclear(res);
 	}
 
-	/* Cleanup if there is any failure */
+	/* For cleanup purposes */
 	if (!temporary)
 		dbinfo->made_replslot = true;
 
@@ -1067,8 +1093,11 @@ drop_replication_slot(PGconn *conn, struct LogicalRepInfo *dbinfo,
 	{
 		res = PQexec(conn, str->data);
 		if (PQresultStatus(res) != PGRES_TUPLES_OK)
+		{
 			pg_log_error("could not drop replication slot \"%s\" on database \"%s\": %s",
 						 slot_name, dbinfo->dbname, PQresultErrorMessage(res));
+			dbinfo->made_replslot = false;	/* don't try again. */
+		}
 
 		PQclear(res);
 	}
@@ -1345,7 +1374,7 @@ create_publication(PGconn *conn, struct LogicalRepInfo *dbinfo)
 		PQclear(res);
 	}
 
-	/* for cleanup purposes */
+	/* For cleanup purposes */
 	dbinfo->made_publication = true;
 
 	destroyPQExpBuffer(str);
@@ -1376,7 +1405,14 @@ drop_publication(PGconn *conn, struct LogicalRepInfo *dbinfo)
 		{
 			pg_log_error("could not drop publication \"%s\" on database \"%s\": %s",
 						 dbinfo->pubname, dbinfo->dbname, PQresultErrorMessage(res));
-			disconnect_database(conn, true);
+			dbinfo->made_publication = false;	/* don't try again. */
+			/*
+			 * Don't disconnect and exit here. This routine is used by primary
+			 * (cleanup publication / replication slot due to an error) and
+			 * subscriber (remove the replicated publications). In both cases,
+			 * it can continue and provide instructions for the user to remove
+			 * it later if cleanup fails.
+			 */
 		}
 		PQclear(res);
 	}
