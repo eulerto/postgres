@@ -2041,7 +2041,7 @@ main(int argc, char **argv)
 	 * command-line options.
 	 */
 	if (dry_run)
-		start_standby_server(&opt, pg_ctl_path, server_start_log, false);
+		start_standby_server(&opt, pg_ctl_path, NULL, false);
 
 	success = true;
 
