@@ -61,7 +61,7 @@ static void cleanup_objects_atexit(void);
 static void usage();
 static char *get_base_conninfo(char *conninfo, char **dbname);
 static char *get_exec_path(const char *argv0, const char *progname);
-static bool check_data_directory(const char *datadir);
+static void check_data_directory(const char *datadir);
 static char *concat_conninfo_dbname(const char *conninfo, const char *dbname);
 static struct LogicalRepInfo *store_pub_sub_info(SimpleStringList dbnames,
 										  const char *pub_base_conninfo,
@@ -282,7 +282,7 @@ get_exec_path(const char *argv0, const char *progname)
  * making an accurate check. If it is not a clone from the publisher, it will
  * eventually fail in a future step.
  */
-static bool
+static void
 check_data_directory(const char *datadir)
 {
 	struct stat statbuf;
@@ -294,23 +294,18 @@ check_data_directory(const char *datadir)
 	if (stat(datadir, &statbuf) != 0)
 	{
 		if (errno == ENOENT)
-			pg_log_error("data directory \"%s\" does not exist", datadir);
+			pg_fatal("data directory \"%s\" does not exist", datadir);
 		else
-			pg_log_error("could not access directory \"%s\": %s", datadir,
+			pg_fatal("could not access directory \"%s\": %s", datadir,
 						 strerror(errno));
-
-		return false;
 	}
 
 	snprintf(versionfile, MAXPGPATH, "%s/PG_VERSION", datadir);
 	if (stat(versionfile, &statbuf) != 0 && errno == ENOENT)
 	{
-		pg_log_error("directory \"%s\" is not a database cluster directory",
+		pg_fatal("directory \"%s\" is not a database cluster directory",
 					 datadir);
-		return false;
 	}
-
-	return true;
 }
 
 /*
@@ -1819,8 +1814,7 @@ main(int argc, char **argv)
 	pg_resetwal_path = get_exec_path(argv[0], "pg_resetwal");
 
 	/* Rudimentary check for a data directory */
-	if (!check_data_directory(opt.subscriber_dir))
-		exit(1);
+	check_data_directory(opt.subscriber_dir);
 
 	/* Store database information for publisher and subscriber */
 	dbinfo = store_pub_sub_info(opt.database_names, pub_base_conninfo,
