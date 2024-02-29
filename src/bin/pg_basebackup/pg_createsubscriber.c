@@ -1213,8 +1213,16 @@ start_standby_server(struct CreateSubscriberOptions *opt, const char *pg_ctl_pat
 	appendPQExpBuffer(pg_ctl_cmd, "\"%s\" start -D \"%s\" -s",
 							pg_ctl_path, opt->subscriber_dir);
 	if (with_options)
-		appendPQExpBuffer(pg_ctl_cmd, " -l \"%s\" -o \"-p %u%s\"",
-							logfile, opt->sub_port, socket_string);
+	{
+		/*
+		 * Don't include the log file in dry run mode because the directory
+		 * that contains it was not created in setup_server_logfile().
+		 */
+		if (!dry_run)
+			appendPQExpBuffer(pg_ctl_cmd, " -l \"%s\"", logfile);
+		appendPQExpBuffer(pg_ctl_cmd, " -o \"-p %u%s\"",
+							opt->sub_port, socket_string);
+	}
 	pg_log_debug("pg_ctl command is: %s", pg_ctl_cmd->data);
 	rc = system(pg_ctl_cmd->data);
 	pg_ctl_status(pg_ctl_cmd->data, rc);
