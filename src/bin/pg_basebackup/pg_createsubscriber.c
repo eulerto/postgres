@@ -1814,7 +1814,11 @@ main(int argc, char **argv)
 	/* Rudimentary check for a data directory */
 	check_data_directory(opt.subscriber_dir);
 
-	/* Store database information for publisher and subscriber */
+	/*
+	 * Store database information for publisher and subscriber. It should be
+	 * called before atexit() because its return is used in the
+	 * cleanup_objects_atexit().
+	 */
 	dbinfo = store_pub_sub_info(opt.database_names, pub_base_conninfo,
 								sub_base_conninfo);
 
