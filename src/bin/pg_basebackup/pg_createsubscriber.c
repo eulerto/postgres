@@ -84,7 +84,7 @@ static char *create_logical_replication_slot(PGconn *conn,
 static void drop_replication_slot(PGconn *conn, struct LogicalRepInfo *dbinfo,
 								  const char *slot_name);
 static char *setup_server_logfile(const char *datadir);
-static void pg_ctl_status(const char *pg_ctl_cmd, int rc, int action);
+static void pg_ctl_status(const char *pg_ctl_cmd, int rc);
 static void start_standby_server(struct CreateSubscriberOptions *opt,
 								 const char *pg_ctl_path, const char *logfile);
 static void stop_standby_server(const char *pg_ctl_path, const char *datadir);
@@ -1123,7 +1123,7 @@ setup_server_logfile(const char *datadir)
  * Reports a suitable message if pg_ctl fails.
  */
 static void
-pg_ctl_status(const char *pg_ctl_cmd, int rc, int action)
+pg_ctl_status(const char *pg_ctl_cmd, int rc)
 {
 	if (rc != 0)
 	{
@@ -1150,11 +1150,6 @@ pg_ctl_status(const char *pg_ctl_cmd, int rc, int action)
 		pg_log_error_detail("The failed command was: %s", pg_ctl_cmd);
 		exit(1);
 	}
-
-	if (action)
-		pg_log_info("postmaster was started");
-	else
-		pg_log_info("postmaster was stopped");
 }
 
 static void
@@ -1188,7 +1183,8 @@ start_standby_server(struct CreateSubscriberOptions *opt, const char *pg_ctl_pat
 						  opt->sub_port, socket_string);
 	pg_log_debug("pg_ctl command is: %s", pg_ctl_cmd);
 	rc = system(pg_ctl_cmd);
-	pg_ctl_status(pg_ctl_cmd, rc, 1);
+	pg_ctl_status(pg_ctl_cmd, rc);
+	pg_log_info("server was started");
 }
 
 static void
@@ -1199,8 +1195,10 @@ stop_standby_server(const char *pg_ctl_path, const char *datadir)
 
 	pg_ctl_cmd = psprintf("\"%s\" stop -D \"%s\" -s", pg_ctl_path,
 						  datadir);
+	pg_log_debug("pg_ctl command is: %s", pg_ctl_cmd);
 	rc = system(pg_ctl_cmd);
-	pg_ctl_status(pg_ctl_cmd, rc, 0);
+	pg_ctl_status(pg_ctl_cmd, rc);
+	pg_log_info("server was stopped");
 }
 
 /*
