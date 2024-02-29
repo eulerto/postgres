@@ -1109,6 +1109,8 @@ drop_replication_slot(PGconn *conn, struct LogicalRepInfo *dbinfo,
  * Create a directory to store any log information. Adjust the permissions.
  * Return a file name (full path) that's used by the standby server when it
  * starts the transformation.
+ * In dry run mode, doesn't create the BASE_OUTPUT_DIR directory, instead
+ * returns the full log file path.
  */
 static char *
 setup_server_logfile(const char *datadir)
@@ -1129,7 +1131,7 @@ setup_server_logfile(const char *datadir)
 		pg_fatal("could not read permissions of directory \"%s\": %m",
 				 datadir);
 
-	if (mkdir(base_dir, pg_dir_create_mode) < 0 && errno != EEXIST)
+	if (!dry_run && mkdir(base_dir, pg_dir_create_mode) < 0 && errno != EEXIST)
 		pg_fatal("could not create directory \"%s\": %m", base_dir);
 
 	/* Append timestamp with ISO 8601 format */
@@ -1211,8 +1213,11 @@ start_standby_server(struct CreateSubscriberOptions *opt, const char *pg_ctl_pat
 						  pg_ctl_path, opt->subscriber_dir, logfile,
 						  opt->sub_port, socket_string);
 	pg_log_debug("pg_ctl command is: %s", pg_ctl_cmd);
-	rc = system(pg_ctl_cmd);
-	pg_ctl_status(pg_ctl_cmd, rc);
+	if (!dry_run)
+	{
+		rc = system(pg_ctl_cmd);
+		pg_ctl_status(pg_ctl_cmd, rc);
+	}
 	pg_log_info("server was started");
 }
 
@@ -1225,8 +1230,11 @@ stop_standby_server(const char *pg_ctl_path, const char *datadir)
 	pg_ctl_cmd = psprintf("\"%s\" stop -D \"%s\" -s", pg_ctl_path,
 						  datadir);
 	pg_log_debug("pg_ctl command is: %s", pg_ctl_cmd);
-	rc = system(pg_ctl_cmd);
-	pg_ctl_status(pg_ctl_cmd, rc);
+	if (!dry_run)
+	{
+		rc = system(pg_ctl_cmd);
+		pg_ctl_status(pg_ctl_cmd, rc);
+	}
 	pg_log_info("server was stopped");
 }
 
@@ -1906,8 +1914,7 @@ main(int argc, char **argv)
 		/* Stop the standby server */
 		pg_log_info("standby is up and running");
 		pg_log_info("stopping the server to start the transformation steps");
-		if (!dry_run)
-			stop_standby_server(pg_ctl_path, opt.subscriber_dir);
+		stop_standby_server(pg_ctl_path, opt.subscriber_dir);
 	}
 	else
 	{
@@ -1975,8 +1982,7 @@ main(int argc, char **argv)
 
 	/* Start subscriber and wait until accepting connections */
 	pg_log_info("starting the subscriber");
-	if (!dry_run)
-		start_standby_server(&opt, pg_ctl_path, server_start_log);
+	start_standby_server(&opt, pg_ctl_path, server_start_log);
 
 	/* Waiting the subscriber to be promoted */
 	wait_for_end_recovery(dbinfo[0].subconninfo, pg_ctl_path, &opt);
@@ -2014,8 +2020,7 @@ main(int argc, char **argv)
 
 	/* Stop the subscriber */
 	pg_log_info("stopping the subscriber");
-	if (!dry_run)
-		stop_standby_server(pg_ctl_path, opt.subscriber_dir);
+	stop_standby_server(pg_ctl_path, opt.subscriber_dir);
 
 	/* Change system identifier from subscriber */
 	modify_subscriber_sysid(pg_resetwal_path, &opt);
@@ -2024,7 +2029,7 @@ main(int argc, char **argv)
 	 * The log file is kept if retain option is specified or this tool does
 	 * not run successfully. Otherwise, log file is removed.
 	 */
-	if (!opt.retain)
+	if (!dry_run && !opt.retain)
 		unlink(server_start_log);
 
 	success = true;
