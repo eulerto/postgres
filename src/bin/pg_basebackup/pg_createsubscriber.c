@@ -2028,13 +2028,6 @@ main(int argc, char **argv)
 	modify_subscriber_sysid(pg_resetwal_path, &opt);
 
 	/*
-	 * The log file is kept if retain option is specified or this tool does
-	 * not run successfully. Otherwise, log file is removed.
-	 */
-	if (!dry_run && !opt.retain)
-		unlink(server_start_log);
-
-	/*
 	 * In dry run mode, the server is restarted with the provided command-line
 	 * options so validation can be applied in the target server. In order to
 	 * preserve the initial state of the server (running), start it without the
@@ -2042,6 +2035,13 @@ main(int argc, char **argv)
 	 */
 	if (dry_run)
 		start_standby_server(&opt, pg_ctl_path, NULL, false);
+
+	/*
+	 * The log file is kept if retain option is specified or this tool does
+	 * not run successfully. Otherwise, log file is removed.
+	 */
+	if (!dry_run && !opt.retain)
+		unlink(server_start_log);
 
 	success = true;
 
