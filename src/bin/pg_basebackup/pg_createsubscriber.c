@@ -845,30 +845,6 @@ check_subscriber(struct LogicalRepInfo *dbinfo)
 	}
 
 	/*
-	 * The target server must not be a primary. The reason is that the system
-	 * identifier is modified by pg_resetwal in one of the last steps. Since
-	 * physical replication requires same system identifier, replication will
-	 * break as soon as the system identifier is changed on the target server.
-	 */
-	res = PQexec(conn,
-			"SELECT 1 FROM pg_catalog.pg_stat_activity "
-			"WHERE backend_type = 'walsender'");
-	if (PQresultStatus(res) != PGRES_TUPLES_OK)
-	{
-		pg_log_error("could not obtain activity of server processes: %s",
-				PQresultErrorMessage(res));
-		disconnect_database(conn, true);
-	}
-
-	if (PQntuples(res) > 0)
-	{
-		pg_log_error("target server is a primary");
-		pg_log_error_hint("The target server must not have a standby server. Stop it before continuing.");
-		disconnect_database(conn, true);
-	}
-	PQclear(res);
-
-	/*
 	 * Subscriptions can only be created by roles that have the privileges of
 	 * pg_create_subscription role and CREATE privileges on the specified
 	 * database.
