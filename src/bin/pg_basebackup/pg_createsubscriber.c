@@ -36,13 +36,13 @@ struct CreateSubscriberOptions
 {
 	char	   *subscriber_dir; /* standby/subscriber data directory */
 	char	   *pub_conninfo_str;	/* publisher connection string */
-	char	   *socket_dir;			/* directory for Unix-domain socket, if any */
-	unsigned short	sub_port;		/* subscriber port number */
-	const char	   *sub_username;	/* subscriber username */
+	char	   *socket_dir;		/* directory for Unix-domain socket, if any */
+	unsigned short sub_port;	/* subscriber port number */
+	const char *sub_username;	/* subscriber username */
 	SimpleStringList database_names;	/* list of database names */
 	bool		retain;			/* retain log file? */
 	int			recovery_timeout;	/* stop recovery after this time */
-} CreateSubscriberOptions;
+}			CreateSubscriberOptions;
 
 struct LogicalRepInfo
 {
@@ -55,7 +55,7 @@ struct LogicalRepInfo
 
 	bool		made_replslot;	/* replication slot was created */
 	bool		made_publication;	/* publication was created */
-} LogicalRepInfo;
+}			LogicalRepInfo;
 
 static void cleanup_objects_atexit(void);
 static void usage();
@@ -64,8 +64,8 @@ static char *get_exec_path(const char *argv0, const char *progname);
 static void check_data_directory(const char *datadir);
 static char *concat_conninfo_dbname(const char *conninfo, const char *dbname);
 static struct LogicalRepInfo *store_pub_sub_info(SimpleStringList dbnames,
-										  const char *pub_base_conninfo,
-										  const char *sub_base_conninfo);
+												 const char *pub_base_conninfo,
+												 const char *sub_base_conninfo);
 static PGconn *connect_database(const char *conninfo, bool exit_on_error);
 static void disconnect_database(PGconn *conn, bool exit_on_error);
 static uint64 get_primary_sysid(const char *conninfo);
@@ -167,19 +167,19 @@ cleanup_objects_atexit(void)
 			{
 				/*
 				 * If a connection could not be established, inform the user
-				 * that some objects were left on primary and should be removed
-				 * before trying again.
+				 * that some objects were left on primary and should be
+				 * removed before trying again.
 				 */
 				if (dbinfo[i].made_publication)
 				{
 					pg_log_warning("There might be a publication \"%s\" in database \"%s\" on primary",
-									dbinfo[i].pubname, dbinfo[i].dbname);
+								   dbinfo[i].pubname, dbinfo[i].dbname);
 					pg_log_warning_hint("Consider dropping this publication before trying again.");
 				}
 				if (dbinfo[i].made_replslot)
 				{
 					pg_log_warning("There might be a replication slot \"%s\" in database \"%s\" on primary",
-									dbinfo[i].subname, dbinfo[i].dbname);
+								   dbinfo[i].subname, dbinfo[i].dbname);
 					pg_log_warning_hint("Drop this replication slot soon to avoid retention of WAL files.");
 				}
 			}
@@ -324,14 +324,14 @@ check_data_directory(const char *datadir)
 			pg_fatal("data directory \"%s\" does not exist", datadir);
 		else
 			pg_fatal("could not access directory \"%s\": %s", datadir,
-						 strerror(errno));
+					 strerror(errno));
 	}
 
 	snprintf(versionfile, MAXPGPATH, "%s/PG_VERSION", datadir);
 	if (stat(versionfile, &statbuf) != 0 && errno == ENOENT)
 	{
 		pg_fatal("directory \"%s\" is not a database cluster directory",
-					 datadir);
+				 datadir);
 	}
 }
 
@@ -466,13 +466,13 @@ get_primary_sysid(const char *conninfo)
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
 		pg_log_error("could not get system identifier: %s",
-				 PQresultErrorMessage(res));
+					 PQresultErrorMessage(res));
 		disconnect_database(conn, true);
 	}
 	if (PQntuples(res) != 1)
 	{
 		pg_log_error("could not get system identifier: got %d rows, expected %d row",
-				 PQntuples(res), 1);
+					 PQntuples(res), 1);
 		disconnect_database(conn, true);
 	}
 
@@ -560,7 +560,8 @@ modify_subscriber_sysid(const char *pg_resetwal_path, struct CreateSubscriberOpt
 
 	if (!dry_run)
 	{
-		int rc = system(cmd_str);
+		int			rc = system(cmd_str);
+
 		if (rc == 0)
 			pg_log_info("subscriber successfully changed the system identifier");
 		else
@@ -664,7 +665,7 @@ server_is_in_recovery(PGconn *conn)
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
 		pg_log_error("could not obtain recovery progress: %s",
-					PQresultErrorMessage(res));
+					 PQresultErrorMessage(res));
 		disconnect_database(conn, true);
 	}
 
@@ -1172,13 +1173,14 @@ start_standby_server(struct CreateSubscriberOptions *opt, const char *pg_ctl_pat
 	socket_string[0] = '\0';
 
 #if !defined(WIN32)
+
 	/*
 	 * An empty listen_addresses list means the server does not listen on any
 	 * IP interfaces; only Unix-domain sockets can be used to connect to the
 	 * server. Prevent external connections to minimize the chance of failure.
 	 */
 	strcat(socket_string,
-			" -c listen_addresses='' -c unix_socket_permissions=0700");
+		   " -c listen_addresses='' -c unix_socket_permissions=0700");
 
 	if (opt->socket_dir)
 		snprintf(socket_string + strlen(socket_string),
@@ -1188,7 +1190,7 @@ start_standby_server(struct CreateSubscriberOptions *opt, const char *pg_ctl_pat
 #endif
 
 	appendPQExpBuffer(pg_ctl_cmd, "\"%s\" start -D \"%s\" -s",
-							pg_ctl_path, opt->subscriber_dir);
+					  pg_ctl_path, opt->subscriber_dir);
 	if (with_options)
 	{
 		/*
@@ -1198,7 +1200,7 @@ start_standby_server(struct CreateSubscriberOptions *opt, const char *pg_ctl_pat
 		if (!dry_run)
 			appendPQExpBuffer(pg_ctl_cmd, " -l \"%s\"", logfile);
 		appendPQExpBuffer(pg_ctl_cmd, " -o \"-p %u%s\"",
-							opt->sub_port, socket_string);
+						  opt->sub_port, socket_string);
 	}
 	pg_log_debug("pg_ctl command is: %s", pg_ctl_cmd->data);
 	rc = system(pg_ctl_cmd->data);
@@ -1244,8 +1246,8 @@ wait_for_end_recovery(const char *conninfo, const char *pg_ctl_path,
 
 	for (;;)
 	{
-		PGresult	*res;
-		bool in_recovery = server_is_in_recovery(conn);
+		PGresult   *res;
+		bool		in_recovery = server_is_in_recovery(conn);
 
 		/*
 		 * Does the recovery process finish? In dry run mode, there is no
@@ -1259,13 +1261,13 @@ wait_for_end_recovery(const char *conninfo, const char *pg_ctl_path,
 		}
 
 		/*
-		 * If it is still in recovery, make sure the target server is connected
-		 * to the primary so it can receive the required WAL to finish the
-		 * recovery process. If it is disconnected try NUM_CONN_ATTEMPTS in a
-		 * row and bail out if not succeed.
+		 * If it is still in recovery, make sure the target server is
+		 * connected to the primary so it can receive the required WAL to
+		 * finish the recovery process. If it is disconnected try
+		 * NUM_CONN_ATTEMPTS in a row and bail out if not succeed.
 		 */
 		res = PQexec(conn,
-						"SELECT 1 FROM pg_catalog.pg_stat_wal_receiver");
+					 "SELECT 1 FROM pg_catalog.pg_stat_wal_receiver");
 		if (PQntuples(res) == 0)
 		{
 			if (++count > NUM_CONN_ATTEMPTS)
@@ -1276,7 +1278,7 @@ wait_for_end_recovery(const char *conninfo, const char *pg_ctl_path,
 			}
 		}
 		else
-			count = 0;		/* reset counter if it connects again */
+			count = 0;			/* reset counter if it connects again */
 
 		PQclear(res);
 
@@ -1301,7 +1303,7 @@ wait_for_end_recovery(const char *conninfo, const char *pg_ctl_path,
 
 	pg_log_info("target server reached the consistent state");
 	pg_log_info_hint("If pg_createsubscriber fails after this point, "
-			"you must recreate the physical replica before continuing.");
+					 "you must recreate the physical replica before continuing.");
 }
 
 /*
@@ -1324,18 +1326,17 @@ create_publication(PGconn *conn, struct LogicalRepInfo *dbinfo)
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
 		pg_log_error("could not obtain publication information: %s",
-				 PQresultErrorMessage(res));
+					 PQresultErrorMessage(res));
 		disconnect_database(conn, true);
 	}
 
 	if (PQntuples(res) == 1)
 	{
 		/*
-		 * Unfortunately, if it reaches this code path, it will always
-		 * fail (unless you decide to change the existing publication
-		 * name). That's bad but it is very unlikely that the user will
-		 * choose a name with pg_createsubscriber_ prefix followed by the
-		 * exact database oid.
+		 * Unfortunately, if it reaches this code path, it will always fail
+		 * (unless you decide to change the existing publication name). That's
+		 * bad but it is very unlikely that the user will choose a name with
+		 * pg_createsubscriber_ prefix followed by the exact database oid.
 		 */
 		pg_log_error("publication \"%s\" already exists", dbinfo->pubname);
 		pg_log_error_hint("Consider renaming this publication before continuing.");
@@ -1359,7 +1360,7 @@ create_publication(PGconn *conn, struct LogicalRepInfo *dbinfo)
 		if (PQresultStatus(res) != PGRES_COMMAND_OK)
 		{
 			pg_log_error("could not create publication \"%s\" on database \"%s\": %s",
-					 dbinfo->pubname, dbinfo->dbname, PQresultErrorMessage(res));
+						 dbinfo->pubname, dbinfo->dbname, PQresultErrorMessage(res));
 			disconnect_database(conn, true);
 		}
 		PQclear(res);
@@ -1397,6 +1398,7 @@ drop_publication(PGconn *conn, struct LogicalRepInfo *dbinfo)
 			pg_log_error("could not drop publication \"%s\" on database \"%s\": %s",
 						 dbinfo->pubname, dbinfo->dbname, PQresultErrorMessage(res));
 			dbinfo->made_publication = false;	/* don't try again. */
+
 			/*
 			 * Don't disconnect and exit here. This routine is used by primary
 			 * (cleanup publication / replication slot due to an error) and
@@ -1447,7 +1449,7 @@ create_subscription(PGconn *conn, struct LogicalRepInfo *dbinfo)
 		if (PQresultStatus(res) != PGRES_COMMAND_OK)
 		{
 			pg_log_error("could not create subscription \"%s\" on database \"%s\": %s",
-					 dbinfo->subname, dbinfo->dbname, PQresultErrorMessage(res));
+						 dbinfo->subname, dbinfo->dbname, PQresultErrorMessage(res));
 			disconnect_database(conn, true);
 		}
 		PQclear(res);
@@ -1486,14 +1488,14 @@ set_replication_progress(PGconn *conn, struct LogicalRepInfo *dbinfo, const char
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
 		pg_log_error("could not obtain subscription OID: %s",
-				 PQresultErrorMessage(res));
+					 PQresultErrorMessage(res));
 		disconnect_database(conn, true);
 	}
 
 	if (PQntuples(res) != 1 && !dry_run)
 	{
 		pg_log_error("could not obtain subscription OID: got %d rows, expected %d rows",
-				 PQntuples(res), 1);
+					 PQntuples(res), 1);
 		disconnect_database(conn, true);
 	}
 
@@ -1533,7 +1535,7 @@ set_replication_progress(PGconn *conn, struct LogicalRepInfo *dbinfo, const char
 		if (PQresultStatus(res) != PGRES_TUPLES_OK)
 		{
 			pg_log_error("could not set replication progress for the subscription \"%s\": %s",
-					 dbinfo->subname, PQresultErrorMessage(res));
+						 dbinfo->subname, PQresultErrorMessage(res));
 			disconnect_database(conn, true);
 		}
 		PQclear(res);
@@ -1569,7 +1571,7 @@ enable_subscription(PGconn *conn, struct LogicalRepInfo *dbinfo)
 		if (PQresultStatus(res) != PGRES_COMMAND_OK)
 		{
 			pg_log_error("could not enable subscription \"%s\": %s",
-					 dbinfo->subname, PQresultErrorMessage(res));
+						 dbinfo->subname, PQresultErrorMessage(res));
 			disconnect_database(conn, true);
 		}
 
@@ -1749,7 +1751,7 @@ main(int argc, char **argv)
 	 */
 	if (opt.socket_dir == NULL)
 	{
-		char	cwd[MAXPGPATH];
+		char		cwd[MAXPGPATH];
 
 		if (!getcwd(cwd, MAXPGPATH))
 			pg_fatal("could not determine current directory");
@@ -1765,7 +1767,7 @@ main(int argc, char **argv)
 	 */
 	if (opt.sub_username == NULL)
 	{
-		char		*errstr = NULL;
+		char	   *errstr = NULL;
 
 		if (getenv("PGUSER"))
 		{
@@ -1803,7 +1805,7 @@ main(int argc, char **argv)
 
 	pg_log_info("validating connection string on subscriber");
 	appendPQExpBuffer(sub_conninfo_str, "host=%s port=%u user=%s fallback_application_name=%s",
-					opt.socket_dir, opt.sub_port, opt.sub_username, progname);
+					  opt.socket_dir, opt.sub_port, opt.sub_username, progname);
 	sub_base_conninfo = get_base_conninfo(sub_conninfo_str->data, NULL);
 	if (sub_base_conninfo == NULL)
 		exit(1);
@@ -1892,17 +1894,17 @@ main(int argc, char **argv)
 
 	/*
 	 * Check if the primary server is ready for logical replication. This
-	 * routine checks if a replication slot is in use on primary so it
-	 * relies on check_subscriber() to obtain the primary_slot_name.
-	 * That's why it is called after it.
+	 * routine checks if a replication slot is in use on primary so it relies
+	 * on check_subscriber() to obtain the primary_slot_name. That's why it is
+	 * called after it.
 	 */
 	check_publisher(dbinfo);
 
 	/*
-	 * Create the required objects for each database on publisher. This
-	 * step is here mainly because if we stop the standby we cannot verify
-	 * if the primary slot is in use. We could use an extra connection for
-	 * it but it doesn't seem worth.
+	 * Create the required objects for each database on publisher. This step
+	 * is here mainly because if we stop the standby we cannot verify if the
+	 * primary slot is in use. We could use an extra connection for it but it
+	 * doesn't seem worth.
 	 */
 	setup_publisher(dbinfo);
 
@@ -2015,8 +2017,8 @@ main(int argc, char **argv)
 	/*
 	 * In dry run mode, the server is restarted with the provided command-line
 	 * options so validation can be applied in the target server. In order to
-	 * preserve the initial state of the server (running), start it without the
-	 * command-line options.
+	 * preserve the initial state of the server (running), start it without
+	 * the command-line options.
 	 */
 	if (dry_run)
 		start_standby_server(&opt, pg_ctl_path, NULL, false);
