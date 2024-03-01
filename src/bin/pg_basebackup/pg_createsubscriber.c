@@ -866,6 +866,7 @@ check_subscriber(struct LogicalRepInfo *dbinfo)
 		pg_log_error_hint("The target server must not have a standby server. Stop it before continuing.");
 		disconnect_database(conn, true);
 	}
+	PQclear(res);
 
 	/*
 	 * Subscriptions can only be created by roles that have the privileges of
