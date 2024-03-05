@@ -30,6 +30,8 @@
 
 #define	DEFAULT_SUB_PORT	50432
 #define	BASE_OUTPUT_DIR		"pg_createsubscriber_output.d"
+#define NUM_CONN_ATTEMPTS	5
+
 
 /* Command-line options */
 struct CreateSubscriberOptions
@@ -766,6 +768,8 @@ check_publisher(struct LogicalRepInfo *dbinfo)
 	if (primary_slot_name)
 	{
 		PQExpBuffer str = createPQExpBuffer();
+		int			count = 0;
+		bool		replslot_active = false;
 
 		appendPQExpBuffer(str,
 						  "SELECT 1 FROM pg_catalog.pg_replication_slots "
@@ -774,12 +778,36 @@ check_publisher(struct LogicalRepInfo *dbinfo)
 
 		pg_log_debug("command is: %s", str->data);
 
-		res = PQexec(conn, str->data);
-		if (PQresultStatus(res) != PGRES_TUPLES_OK)
+		/*
+		 * Try NUM_CONN_ATTEMPTS if the replication slot is not active yet.
+		 * There might take some time until the standby acquires the
+		 * replication slot.
+		 */
+		while (!replslot_active)
 		{
-			pg_log_error("could not obtain replication slot information: %s",
-						 PQresultErrorMessage(res));
-			disconnect_database(conn, true);
+			pg_log_debug("pg_replication_slots: attempt #%d", count);
+
+			res = PQexec(conn, str->data);
+			if (PQresultStatus(res) != PGRES_TUPLES_OK)
+			{
+				pg_log_error("could not obtain replication slot information: %s",
+							 PQresultErrorMessage(res));
+				disconnect_database(conn, true);
+			}
+
+			if (PQntuples(res) == 1)
+			{
+				replslot_active = true;
+				break;
+			}
+
+			if (++count > NUM_CONN_ATTEMPTS)
+				break;
+
+			PQclear(res);
+
+			/* Keep waiting */
+			pg_usleep(WAIT_INTERVAL * USEC_PER_SEC);
 		}
 
 		if (PQntuples(res) != 1)
@@ -1237,8 +1265,6 @@ wait_for_end_recovery(const char *conninfo, const char *pg_ctl_path,
 	int			status = POSTMASTER_STILL_STARTING;
 	int			timer = 0;
 	int			count = 0;		/* number of consecutive connection attempts */
-
-#define NUM_CONN_ATTEMPTS	5
 
 	pg_log_info("waiting the target server to reach the consistent state");
 
