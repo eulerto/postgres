@@ -1676,7 +1676,7 @@ main(int argc, char **argv)
 
 	get_restricted_token();
 
-	while ((c = getopt_long(argc, argv, "d:D:nP:rS:t:v",
+	while ((c = getopt_long(argc, argv, "d:D:np:P:rs:t:U:v",
 							long_options, &option_index)) != -1)
 	{
 		switch (c)
