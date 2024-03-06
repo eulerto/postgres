@@ -131,9 +131,6 @@ enum WaitPMResult
 static void
 cleanup_objects_atexit(void)
 {
-	PGconn	   *conn;
-	int			i;
-
 	if (success)
 		return;
 
@@ -149,11 +146,12 @@ cleanup_objects_atexit(void)
 		pg_log_warning_hint("You must recreate the physical replica before continuing.");
 	}
 
-	for (i = 0; i < num_dbs; i++)
+	for (int i = 0; i < num_dbs; i++)
 	{
-
 		if (dbinfo[i].made_publication || dbinfo[i].made_replslot)
 		{
+			PGconn	   *conn;
+
 			conn = connect_database(dbinfo[i].pubconninfo, false);
 			if (conn != NULL)
 			{
