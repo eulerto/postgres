@@ -1609,8 +1609,8 @@ main(int argc, char **argv)
 
 	char	   *server_start_log;
 
-	char	   *pub_base_conninfo = NULL;
-	char	   *sub_base_conninfo = NULL;
+	char	   *pub_base_conninfo;
+	char	   *sub_base_conninfo;
 	char	   *dbname_conninfo = NULL;
 
 	uint64		pub_sysid;
