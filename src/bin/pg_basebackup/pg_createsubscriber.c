@@ -1724,9 +1724,7 @@ main(int argc, char **argv)
 		}
 	}
 
-	/*
-	 * Any non-option arguments?
-	 */
+	/* Any non-option arguments? */
 	if (optind < argc)
 	{
 		pg_log_error("too many command-line arguments (first is \"%s\")",
@@ -1735,9 +1733,7 @@ main(int argc, char **argv)
 		exit(1);
 	}
 
-	/*
-	 * Required arguments
-	 */
+	/* Required arguments */
 	if (opt.subscriber_dir == NULL)
 	{
 		pg_log_error("no subscriber data directory specified");
@@ -1745,9 +1741,7 @@ main(int argc, char **argv)
 		exit(1);
 	}
 
-	/*
-	 * If socket directory is not provided, use the current directory.
-	 */
+	/* If socket directory is not provided, use the current directory */
 	if (opt.socket_dir == NULL)
 	{
 		char		cwd[MAXPGPATH];
@@ -1759,7 +1753,6 @@ main(int argc, char **argv)
 	}
 
 	/*
-	 *
 	 * If subscriber username is not provided, check if the environment
 	 * variable sets it. If not, obtain the operating system name of the user
 	 * running it.
