@@ -1759,14 +1759,14 @@ main(int argc, char **argv)
 	 */
 	if (opt.sub_username == NULL)
 	{
-		char	   *errstr = NULL;
-
 		if (getenv("PGUSER"))
 		{
 			opt.sub_username = getenv("PGUSER");
 		}
 		else
 		{
+			char	   *errstr = NULL;
+
 			opt.sub_username = get_user_name(&errstr);
 			if (errstr)
 				pg_fatal("%s", errstr);
