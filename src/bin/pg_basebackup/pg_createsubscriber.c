@@ -79,6 +79,8 @@ static void check_subscriber(struct LogicalRepInfo *dbinfo);
 static void setup_subscriber(struct LogicalRepInfo *dbinfo,
 							 const char *consistent_lsn);
 static char *setup_recovery(struct LogicalRepInfo *dbinfo, char *datadir);
+static void drop_primary_replication_slot(struct LogicalRepInfo *dbinfo,
+										  char *slotname);
 static char *create_logical_replication_slot(PGconn *conn,
 											 struct LogicalRepInfo *dbinfo,
 											 bool temporary);
@@ -1057,6 +1059,36 @@ setup_recovery(struct LogicalRepInfo *dbinfo, char *datadir)
 }
 
 /*
+ * Drop physical replication slot on primary if the standby was using it. After
+ * the transformation, it has no use.
+ *
+ * XXX we might not fail here. Instead, we provide a warning so the user
+ * eventually drops this replication slot later.
+ */
+static void
+drop_primary_replication_slot(struct LogicalRepInfo *dbinfo, char *slotname)
+{
+	PGconn	   *conn;
+
+	/* Replication slot does not exist, do nothing */
+	if (!primary_slot_name)
+		return;
+
+	conn = connect_database(dbinfo[0].pubconninfo, false);
+	if (conn != NULL)
+	{
+		drop_replication_slot(conn, &dbinfo[0], slotname);
+		disconnect_database(conn, false);
+	}
+	else
+	{
+		pg_log_warning("could not drop replication slot \"%s\" on primary",
+					   slotname);
+		pg_log_warning_hint("Drop this replication slot soon to avoid retention of WAL files.");
+	}
+}
+
+/*
  * Create a logical replication slot and returns a LSN.
  *
  * CreateReplicationSlot() is not used because it does not provide the one-row
@@ -1682,7 +1714,6 @@ main(int argc, char **argv)
 	uint64		sub_sysid;
 	struct stat statbuf;
 
-	PGconn	   *conn;
 	char	   *consistent_lsn;
 
 	char		pidfile[MAXPGPATH];
@@ -1984,27 +2015,8 @@ main(int argc, char **argv)
 	 */
 	setup_subscriber(dbinfo, consistent_lsn);
 
-	/*
-	 * If the primary_slot_name exists on primary, drop it.
-	 *
-	 * XXX we might not fail here. Instead, we provide a warning so the user
-	 * eventually drops this replication slot later.
-	 */
-	if (primary_slot_name != NULL)
-	{
-		conn = connect_database(dbinfo[0].pubconninfo, false);
-		if (conn != NULL)
-		{
-			drop_replication_slot(conn, &dbinfo[0], primary_slot_name);
-			disconnect_database(conn, false);
-		}
-		else
-		{
-			pg_log_warning("could not drop replication slot \"%s\" on primary",
-						   primary_slot_name);
-			pg_log_warning_hint("Drop this replication slot soon to avoid retention of WAL files.");
-		}
-	}
+	/* Remove primary_slot_name if it exists on primary */
+	drop_primary_replication_slot(dbinfo, primary_slot_name);
 
 	/* Stop the subscriber */
 	pg_log_info("stopping the subscriber");
