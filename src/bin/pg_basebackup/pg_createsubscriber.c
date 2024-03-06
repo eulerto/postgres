@@ -1620,7 +1620,6 @@ main(int argc, char **argv)
 	PGconn	   *conn;
 	char	   *consistent_lsn;
 
-	PQExpBuffer sub_conninfo_str = createPQExpBuffer();
 	PQExpBuffer recoveryconfcontents = NULL;
 
 	char		pidfile[MAXPGPATH];
@@ -1796,11 +1795,8 @@ main(int argc, char **argv)
 		exit(1);
 
 	pg_log_info("validating connection string on subscriber");
-	appendPQExpBuffer(sub_conninfo_str, "host=%s port=%u user=%s fallback_application_name=%s",
-					  opt.socket_dir, opt.sub_port, opt.sub_username, progname);
-	sub_base_conninfo = get_base_conninfo(sub_conninfo_str->data, NULL);
-	if (sub_base_conninfo == NULL)
-		exit(1);
+	sub_base_conninfo = psprintf("host=%s port=%u user=%s fallback_application_name=%s",
+								 opt.socket_dir, opt.sub_port, opt.sub_username, progname);
 
 	if (opt.database_names.head == NULL)
 	{
