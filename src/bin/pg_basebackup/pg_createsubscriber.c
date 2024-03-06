@@ -1706,6 +1706,7 @@ main(int argc, char **argv)
 				break;
 			case 's':
 				opt.socket_dir = pg_strdup(optarg);
+				canonicalize_path(opt.socket_dir);
 				break;
 			case 't':
 				opt.recovery_timeout = atoi(optarg);
