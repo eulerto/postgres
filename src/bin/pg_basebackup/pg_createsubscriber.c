@@ -78,6 +78,7 @@ static void setup_publisher(struct LogicalRepInfo *dbinfo);
 static void check_subscriber(struct LogicalRepInfo *dbinfo);
 static void setup_subscriber(struct LogicalRepInfo *dbinfo,
 							 const char *consistent_lsn);
+static char *setup_recovery(struct LogicalRepInfo *dbinfo, char *datadir);
 static char *create_logical_replication_slot(PGconn *conn,
 											 struct LogicalRepInfo *dbinfo,
 											 bool temporary);
@@ -992,6 +993,70 @@ setup_subscriber(struct LogicalRepInfo *dbinfo, const char *consistent_lsn)
 }
 
 /*
+ * Get a replication start location and write the required recovery parameters
+ * into the configuration file. Returns the replication start location that is
+ * used to adjust the subscriptions (see set_replication_progress).
+ */
+static char *
+setup_recovery(struct LogicalRepInfo *dbinfo, char *datadir)
+{
+	char	   *consistent_lsn;
+	PGconn	   *conn;
+	PQExpBuffer recoveryconfcontents;
+
+	/*
+	 * Despite of the recovery parameters will be written to the subscriber,
+	 * use a publisher connection. The primary_conninfo is generated using the
+	 * connection settings.
+	 */
+	conn = connect_database(dbinfo[0].pubconninfo, true);
+
+	/*
+	 * Write recovery parameters.
+	 *
+	 * Despite of the recovery parameters will be written to the subscriber,
+	 * use a publisher connection for the following recovery functions. The
+	 * connection is only used to check the current server version (physical
+	 * replica, same server version). The subscriber is not running yet. In
+	 * dry run mode, the recovery parameters *won't* be written. An invalid
+	 * LSN is used for printing purposes. Additional recovery parameters are
+	 * added here. It avoids unexpected behavior such as end of recovery as
+	 * soon as a consistent state is reached (recovery_target) and failure due
+	 * to multiple recovery targets (name, time, xid, LSN).
+	 */
+	recoveryconfcontents = GenerateRecoveryConfig(conn, NULL);
+	appendPQExpBuffer(recoveryconfcontents, "recovery_target = ''\n");
+	appendPQExpBuffer(recoveryconfcontents,
+					  "recovery_target_timeline = 'latest'\n");
+	appendPQExpBuffer(recoveryconfcontents,
+					  "recovery_target_inclusive = true\n");
+	appendPQExpBuffer(recoveryconfcontents,
+					  "recovery_target_action = promote\n");
+	appendPQExpBuffer(recoveryconfcontents, "recovery_target_name = ''\n");
+	appendPQExpBuffer(recoveryconfcontents, "recovery_target_time = ''\n");
+	appendPQExpBuffer(recoveryconfcontents, "recovery_target_xid = ''\n");
+
+	if (dry_run)
+	{
+		appendPQExpBuffer(recoveryconfcontents, "# dry run mode");
+		appendPQExpBuffer(recoveryconfcontents,
+						  "recovery_target_lsn = '%X/%X'\n",
+						  LSN_FORMAT_ARGS((XLogRecPtr) InvalidXLogRecPtr));
+	}
+	else
+	{
+		appendPQExpBuffer(recoveryconfcontents, "recovery_target_lsn = '%s'\n",
+						  consistent_lsn);
+		WriteRecoveryConfig(conn, datadir, recoveryconfcontents);
+	}
+	disconnect_database(conn, false);
+
+	pg_log_debug("recovery parameters:\n%s", recoveryconfcontents->data);
+
+	return consistent_lsn;
+}
+
+/*
  * Create a logical replication slot and returns a LSN.
  *
  * CreateReplicationSlot() is not used because it does not provide the one-row
@@ -1620,8 +1685,6 @@ main(int argc, char **argv)
 	PGconn	   *conn;
 	char	   *consistent_lsn;
 
-	PQExpBuffer recoveryconfcontents = NULL;
-
 	char		pidfile[MAXPGPATH];
 
 	pg_logging_init(argv[0]);
@@ -1897,61 +1960,10 @@ main(int argc, char **argv)
 	setup_publisher(dbinfo);
 
 	/*
-	 * Create a temporary logical replication slot to get a consistent LSN.
-	 *
-	 * This consistent LSN will be used later to advanced the recently created
-	 * replication slots. It is ok to use a temporary replication slot here
-	 * because it will have a short lifetime and it is only used as a mark to
-	 * start the logical replication.
-	 *
-	 * XXX we should probably use the last created replication slot to get a
-	 * consistent LSN but it should be changed after adding pg_basebackup
-	 * support.
+	 * Get the replication start point and write the required recovery
+	 * parameters into the configuration file.
 	 */
-	conn = connect_database(dbinfo[0].pubconninfo, true);
-	consistent_lsn = create_logical_replication_slot(conn, &dbinfo[0], true);
-
-	/*
-	 * Write recovery parameters.
-	 *
-	 * Despite of the recovery parameters will be written to the subscriber,
-	 * use a publisher connection for the following recovery functions. The
-	 * connection is only used to check the current server version (physical
-	 * replica, same server version). The subscriber is not running yet. In
-	 * dry run mode, the recovery parameters *won't* be written. An invalid
-	 * LSN is used for printing purposes. Additional recovery parameters are
-	 * added here. It avoids unexpected behavior such as end of recovery as
-	 * soon as a consistent state is reached (recovery_target) and failure due
-	 * to multiple recovery targets (name, time, xid, LSN).
-	 */
-	recoveryconfcontents = GenerateRecoveryConfig(conn, NULL);
-	appendPQExpBuffer(recoveryconfcontents, "recovery_target = ''\n");
-	appendPQExpBuffer(recoveryconfcontents,
-					  "recovery_target_timeline = 'latest'\n");
-	appendPQExpBuffer(recoveryconfcontents,
-					  "recovery_target_inclusive = true\n");
-	appendPQExpBuffer(recoveryconfcontents,
-					  "recovery_target_action = promote\n");
-	appendPQExpBuffer(recoveryconfcontents, "recovery_target_name = ''\n");
-	appendPQExpBuffer(recoveryconfcontents, "recovery_target_time = ''\n");
-	appendPQExpBuffer(recoveryconfcontents, "recovery_target_xid = ''\n");
-
-	if (dry_run)
-	{
-		appendPQExpBuffer(recoveryconfcontents, "# dry run mode");
-		appendPQExpBuffer(recoveryconfcontents,
-						  "recovery_target_lsn = '%X/%X'\n",
-						  LSN_FORMAT_ARGS((XLogRecPtr) InvalidXLogRecPtr));
-	}
-	else
-	{
-		appendPQExpBuffer(recoveryconfcontents, "recovery_target_lsn = '%s'\n",
-						  consistent_lsn);
-		WriteRecoveryConfig(conn, opt.subscriber_dir, recoveryconfcontents);
-	}
-	disconnect_database(conn, false);
-
-	pg_log_debug("recovery parameters:\n%s", recoveryconfcontents->data);
+	consistent_lsn = setup_recovery(dbinfo, opt.subscriber_dir);
 
 	/*
 	 * Restart subscriber so the recovery parameters will take effect. Wait
@@ -1966,10 +1978,9 @@ main(int argc, char **argv)
 
 	/*
 	 * Create the subscription for each database on subscriber. It does not
-	 * enable it immediately because it needs to adjust the logical
-	 * replication start point to the LSN reported by consistent_lsn (see
-	 * set_replication_progress). It also cleans up publications created by
-	 * this tool and replication to the standby.
+	 * enable it immediately because it needs to adjust the replication start
+	 * point to the LSN reported by setup_recovery().  It also cleans up
+	 * publications created by this tool and replication to the standby.
 	 */
 	setup_subscriber(dbinfo, consistent_lsn);
 
