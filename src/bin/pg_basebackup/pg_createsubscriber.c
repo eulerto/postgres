@@ -74,11 +74,12 @@ static void modify_subscriber_sysid(const char *pg_resetwal_path,
 									struct CreateSubscriberOptions *opt);
 static bool server_is_in_recovery(PGconn *conn);
 static void check_publisher(struct LogicalRepInfo *dbinfo);
-static void setup_publisher(struct LogicalRepInfo *dbinfo);
+static char *setup_publisher(struct LogicalRepInfo *dbinfo);
 static void check_subscriber(struct LogicalRepInfo *dbinfo);
 static void setup_subscriber(struct LogicalRepInfo *dbinfo,
 							 const char *consistent_lsn);
-static char *setup_recovery(struct LogicalRepInfo *dbinfo, char *datadir);
+static void setup_recovery(struct LogicalRepInfo *dbinfo, char *datadir,
+						   char *lsn);
 static void drop_primary_replication_slot(struct LogicalRepInfo *dbinfo,
 										  char *slotname);
 static char *create_logical_replication_slot(PGconn *conn,
@@ -574,11 +575,15 @@ modify_subscriber_sysid(const char *pg_resetwal_path, struct CreateSubscriberOpt
 
 /*
  * Create the publications and replication slots in preparation for logical
- * replication.
+ * replication. Returns the LSN from latest replication slot. It will be the
+ * replication start point that is used to adjust the subscriptions (see
+ * set_replication_progress).
  */
-static void
+static char *
 setup_publisher(struct LogicalRepInfo *dbinfo)
 {
+	char	   *lsn = NULL;
+
 	for (int i = 0; i < num_dbs; i++)
 	{
 		PGconn	   *conn;
@@ -641,8 +646,10 @@ setup_publisher(struct LogicalRepInfo *dbinfo)
 		dbinfo[i].subname = pg_strdup(replslotname);
 
 		/* Create replication slot on publisher */
-		if (create_logical_replication_slot(conn, &dbinfo[i], false) != NULL ||
-			dry_run)
+		if (lsn)
+			pg_free(lsn);
+		lsn = create_logical_replication_slot(conn, &dbinfo[i], false);
+		if (lsn != NULL || dry_run)
 			pg_log_info("create replication slot \"%s\" on publisher",
 						replslotname);
 		else
@@ -650,6 +657,8 @@ setup_publisher(struct LogicalRepInfo *dbinfo)
 
 		disconnect_database(conn, false);
 	}
+
+	return lsn;
 }
 
 /*
@@ -995,14 +1004,11 @@ setup_subscriber(struct LogicalRepInfo *dbinfo, const char *consistent_lsn)
 }
 
 /*
- * Get a replication start location and write the required recovery parameters
- * into the configuration file. Returns the replication start location that is
- * used to adjust the subscriptions (see set_replication_progress).
+ * Write the required recovery parameters.
  */
-static char *
-setup_recovery(struct LogicalRepInfo *dbinfo, char *datadir)
+static void
+setup_recovery(struct LogicalRepInfo *dbinfo, char *datadir, char *lsn)
 {
-	char	   *consistent_lsn;
 	PGconn	   *conn;
 	PQExpBuffer recoveryconfcontents;
 
@@ -1016,15 +1022,12 @@ setup_recovery(struct LogicalRepInfo *dbinfo, char *datadir)
 	/*
 	 * Write recovery parameters.
 	 *
-	 * Despite of the recovery parameters will be written to the subscriber,
-	 * use a publisher connection for the following recovery functions. The
-	 * connection is only used to check the current server version (physical
-	 * replica, same server version). The subscriber is not running yet. In
-	 * dry run mode, the recovery parameters *won't* be written. An invalid
-	 * LSN is used for printing purposes. Additional recovery parameters are
-	 * added here. It avoids unexpected behavior such as end of recovery as
-	 * soon as a consistent state is reached (recovery_target) and failure due
-	 * to multiple recovery targets (name, time, xid, LSN).
+	 * The subscriber is not running yet. In dry run mode, the recovery
+	 * parameters *won't* be written. An invalid LSN is used for printing
+	 * purposes. Additional recovery parameters are added here. It avoids
+	 * unexpected behavior such as end of recovery as soon as a consistent
+	 * state is reached (recovery_target) and failure due to multiple recovery
+	 * targets (name, time, xid, LSN).
 	 */
 	recoveryconfcontents = GenerateRecoveryConfig(conn, NULL);
 	appendPQExpBuffer(recoveryconfcontents, "recovery_target = ''\n");
@@ -1048,14 +1051,12 @@ setup_recovery(struct LogicalRepInfo *dbinfo, char *datadir)
 	else
 	{
 		appendPQExpBuffer(recoveryconfcontents, "recovery_target_lsn = '%s'\n",
-						  consistent_lsn);
+						  lsn);
 		WriteRecoveryConfig(conn, datadir, recoveryconfcontents);
 	}
 	disconnect_database(conn, false);
 
 	pg_log_debug("recovery parameters:\n%s", recoveryconfcontents->data);
-
-	return consistent_lsn;
 }
 
 /*
@@ -1988,13 +1989,10 @@ main(int argc, char **argv)
 	 * primary slot is in use. We could use an extra connection for it but it
 	 * doesn't seem worth.
 	 */
-	setup_publisher(dbinfo);
+	consistent_lsn = setup_publisher(dbinfo);
 
-	/*
-	 * Get the replication start point and write the required recovery
-	 * parameters into the configuration file.
-	 */
-	consistent_lsn = setup_recovery(dbinfo, opt.subscriber_dir);
+	/* Write the required recovery parameters */
+	setup_recovery(dbinfo, opt.subscriber_dir, consistent_lsn);
 
 	/*
 	 * Restart subscriber so the recovery parameters will take effect. Wait
@@ -2010,7 +2008,7 @@ main(int argc, char **argv)
 	/*
 	 * Create the subscription for each database on subscriber. It does not
 	 * enable it immediately because it needs to adjust the replication start
-	 * point to the LSN reported by setup_recovery().  It also cleans up
+	 * point to the LSN reported by setup_publisher().  It also cleans up
 	 * publications created by this tool and replication to the standby.
 	 */
 	setup_subscriber(dbinfo, consistent_lsn);
