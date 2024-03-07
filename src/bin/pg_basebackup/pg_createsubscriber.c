@@ -972,7 +972,7 @@ check_subscriber(struct LogicalRepInfo *dbinfo)
 /*
  * Create the subscriptions, adjust the initial location for logical
  * replication and enable the subscriptions. That's the last step for logical
- * repliation setup.
+ * replication setup.
  */
 static void
 setup_subscriber(struct LogicalRepInfo *dbinfo, const char *consistent_lsn)

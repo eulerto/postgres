@@ -259,7 +259,7 @@ PostgreSQL documentation
        <para>
         The port number on which the target server is listening for connections.
         Defaults to running the target server on port 50432 to avoid unintended
-        client connnections.
+        client connections.
        </para>
       </listitem>
      </varlistentry>
