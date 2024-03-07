@@ -112,6 +112,63 @@ $node_c->teardown_node;
 $node_p->safe_psql('pg1', "INSERT INTO tbl1 VALUES('second row')");
 $node_p->wait_for_replay_catchup($node_s);
 
+# Check some unmet conditions on node P
+$node_p->append_conf('postgresql.conf', q{
+wal_level = replica
+max_replication_slots = 1
+max_wal_senders = 1
+max_worker_processes = 2
+});
+$node_p->restart;
+command_fails(
+	[
+		'pg_createsubscriber', '--verbose',
+		'--dry-run', '--pgdata',
+		$node_s->data_dir, '--publisher-server',
+		$node_p->connstr('pg1'),
+		'--socket-directory', $node_s->host,
+		'--subscriber-port', $node_s->port,
+		'--database', 'pg1',
+		'--database', 'pg2'
+	],
+	'primary contains unmet conditions on node P');
+# Restore default settings here but only apply it after testing standby. Some
+# standby settings should not be a lower setting than on the primary.
+$node_p->append_conf('postgresql.conf', q{
+wal_level = logical
+max_replication_slots = 10
+max_wal_senders = 10
+max_worker_processes = 8
+});
+
+# Check some unmet conditions on node S
+$node_s->append_conf('postgresql.conf', q{
+max_replication_slots = 1
+max_logical_replication_workers = 1
+max_worker_processes = 2
+});
+$node_s->restart;
+command_fails(
+	[
+		'pg_createsubscriber', '--verbose',
+		'--dry-run', '--pgdata',
+		$node_s->data_dir, '--publisher-server',
+		$node_p->connstr('pg1'),
+		'--socket-directory', $node_s->host,
+		'--subscriber-port', $node_s->port,
+		'--database', 'pg1',
+		'--database', 'pg2'
+	],
+	'standby contains unmet conditions on node S');
+$node_s->append_conf('postgresql.conf', q{
+max_replication_slots = 10
+max_logical_replication_workers = 4
+max_worker_processes = 8
+});
+# Restore default settings on both servers
+$node_s->restart;
+$node_p->restart;
+
 # dry run mode on node S
 command_ok(
 	[

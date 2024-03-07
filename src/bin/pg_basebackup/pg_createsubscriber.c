@@ -695,6 +695,7 @@ check_publisher(struct LogicalRepInfo *dbinfo)
 {
 	PGconn	   *conn;
 	PGresult   *res;
+	bool		failed = false;
 
 	char	   *wal_level;
 	int			max_repslots;
@@ -808,7 +809,10 @@ check_publisher(struct LogicalRepInfo *dbinfo)
 	disconnect_database(conn, false);
 
 	if (strcmp(wal_level, "logical") != 0)
-		pg_fatal("publisher requires wal_level >= logical");
+	{
+		pg_log_error("publisher requires wal_level >= logical");
+		failed = true;
+	}
 
 	/* One additional temporary logical replication slot */
 	if (max_repslots - cur_repslots < num_dbs + 1)
@@ -817,7 +821,7 @@ check_publisher(struct LogicalRepInfo *dbinfo)
 					 num_dbs + 1, max_repslots - cur_repslots);
 		pg_log_error_hint("Consider increasing max_replication_slots to at least %d.",
 						  cur_repslots + num_dbs + 1);
-		exit(1);
+		failed = true;
 	}
 
 	if (max_walsenders - cur_walsenders < num_dbs)
@@ -826,8 +830,11 @@ check_publisher(struct LogicalRepInfo *dbinfo)
 					 num_dbs, max_walsenders - cur_walsenders);
 		pg_log_error_hint("Consider increasing max_wal_senders to at least %d.",
 						  cur_walsenders + num_dbs);
-		exit(1);
+		failed = true;
 	}
+
+	if (failed)
+		exit(1);
 }
 
 /*
@@ -839,6 +846,7 @@ check_subscriber(struct LogicalRepInfo *dbinfo)
 	PGconn	   *conn;
 	PGresult   *res;
 	PQExpBuffer str = createPQExpBuffer();
+	bool		failed = false;
 
 	int			max_lrworkers;
 	int			max_repslots;
@@ -882,18 +890,18 @@ check_subscriber(struct LogicalRepInfo *dbinfo)
 		pg_log_error("permission denied to create subscription");
 		pg_log_error_hint("Only roles with privileges of the \"%s\" role may create subscriptions.",
 						  "pg_create_subscription");
-		disconnect_database(conn, true);
+		failed = true;
 	}
 	if (strcmp(PQgetvalue(res, 0, 1), "t") != 0)
 	{
 		pg_log_error("permission denied for database %s", dbinfo[0].dbname);
-		disconnect_database(conn, true);
+		failed = true;
 	}
 	if (strcmp(PQgetvalue(res, 0, 2), "t") != 0)
 	{
 		pg_log_error("permission denied for function \"%s\"",
 					 "pg_catalog.pg_replication_origin_advance(text, pg_lsn)");
-		disconnect_database(conn, true);
+		failed = true;
 	}
 
 	destroyPQExpBuffer(str);
@@ -947,7 +955,7 @@ check_subscriber(struct LogicalRepInfo *dbinfo)
 					 num_dbs, max_repslots);
 		pg_log_error_hint("Consider increasing max_replication_slots to at least %d.",
 						  num_dbs);
-		exit(1);
+		failed = true;
 	}
 
 	if (max_lrworkers < num_dbs)
@@ -956,7 +964,7 @@ check_subscriber(struct LogicalRepInfo *dbinfo)
 					 num_dbs, max_lrworkers);
 		pg_log_error_hint("Consider increasing max_logical_replication_workers to at least %d.",
 						  num_dbs);
-		exit(1);
+		failed = true;
 	}
 
 	if (max_wprocs < num_dbs + 1)
@@ -965,8 +973,11 @@ check_subscriber(struct LogicalRepInfo *dbinfo)
 					 num_dbs + 1, max_wprocs);
 		pg_log_error_hint("Consider increasing max_worker_processes to at least %d.",
 						  num_dbs + 1);
-		exit(1);
+		failed = true;
 	}
+
+	if (failed)
+		exit(1);
 }
 
 /*
