@@ -28,7 +28,7 @@
 #include "fe_utils/simple_list.h"
 #include "getopt_long.h"
 
-#define	DEFAULT_SUB_PORT	50432
+#define	DEFAULT_SUB_PORT	"50432"
 #define	BASE_OUTPUT_DIR		"pg_createsubscriber_output.d"
 
 /* Command-line options */
@@ -37,7 +37,7 @@ struct CreateSubscriberOptions
 	char	   *subscriber_dir; /* standby/subscriber data directory */
 	char	   *pub_conninfo_str;	/* publisher connection string */
 	char	   *socket_dir;		/* directory for Unix-domain socket, if any */
-	unsigned short sub_port;	/* subscriber port number */
+	char	   *sub_port;		/* subscriber port number */
 	const char *sub_username;	/* subscriber username */
 	SimpleStringList database_names;	/* list of database names */
 	bool		retain;			/* retain log file? */
@@ -200,7 +200,7 @@ usage(void)
 	printf(_(" -d, --database=DBNAME               database to create a subscription\n"));
 	printf(_(" -D, --pgdata=DATADIR                location for the subscriber data directory\n"));
 	printf(_(" -n, --dry-run                       dry run, just show what would be done\n"));
-	printf(_(" -p, --subscriber-port=PORT          subscriber port number (default %d)\n"), DEFAULT_SUB_PORT);
+	printf(_(" -p, --subscriber-port=PORT          subscriber port number (default %s)\n"), DEFAULT_SUB_PORT);
 	printf(_(" -P, --publisher-server=CONNSTR      publisher connection string\n"));
 	printf(_(" -r, --retain                        retain log file after success\n"));
 	printf(_(" -s, --socket-directory=DIR          socket directory to use (default current directory)\n"));
@@ -1295,7 +1295,7 @@ start_standby_server(struct CreateSubscriberOptions *opt, const char *pg_ctl_pat
 		 */
 		if (!dry_run)
 			appendPQExpBuffer(pg_ctl_cmd, " -l \"%s\"", logfile);
-		appendPQExpBuffer(pg_ctl_cmd, " -o \"-p %u%s\"",
+		appendPQExpBuffer(pg_ctl_cmd, " -o \"-p %s%s\"",
 						  opt->sub_port, socket_string);
 	}
 	pg_log_debug("pg_ctl command is: %s", pg_ctl_cmd->data);
@@ -1743,7 +1743,8 @@ main(int argc, char **argv)
 	opt.subscriber_dir = NULL;
 	opt.pub_conninfo_str = NULL;
 	opt.socket_dir = NULL;
-	opt.sub_port = DEFAULT_SUB_PORT;
+	opt.sub_port = palloc(16);
+	strcpy(opt.sub_port, DEFAULT_SUB_PORT);
 	opt.sub_username = NULL;
 	opt.database_names = (SimpleStringList)
 	{
@@ -1789,8 +1790,8 @@ main(int argc, char **argv)
 				dry_run = true;
 				break;
 			case 'p':
-				if ((opt.sub_port = atoi(optarg)) <= 0)
-					pg_fatal("invalid subscriber port number");
+				pg_free(opt.sub_port);
+				opt.sub_port = pg_strdup(optarg);
 				break;
 			case 'P':
 				opt.pub_conninfo_str = pg_strdup(optarg);
@@ -1890,7 +1891,7 @@ main(int argc, char **argv)
 		exit(1);
 
 	pg_log_info("validating connection string on subscriber");
-	sub_base_conninfo = psprintf("host=%s port=%u user=%s fallback_application_name=%s",
+	sub_base_conninfo = psprintf("host=%s port=%s user=%s fallback_application_name=%s",
 								 opt.socket_dir, opt.sub_port, opt.sub_username, progname);
 
 	if (opt.database_names.head == NULL)
