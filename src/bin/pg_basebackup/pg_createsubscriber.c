@@ -947,7 +947,7 @@ check_subscriber(struct LogicalRepInfo *dbinfo)
 					 num_dbs, max_repslots);
 		pg_log_error_hint("Consider increasing max_replication_slots to at least %d.",
 						  num_dbs);
-		disconnect_database(conn, true);
+		exit(1);
 	}
 
 	if (max_lrworkers < num_dbs)
@@ -956,7 +956,7 @@ check_subscriber(struct LogicalRepInfo *dbinfo)
 					 num_dbs, max_lrworkers);
 		pg_log_error_hint("Consider increasing max_logical_replication_workers to at least %d.",
 						  num_dbs);
-		disconnect_database(conn, true);
+		exit(1);
 	}
 
 	if (max_wprocs < num_dbs + 1)
@@ -965,7 +965,7 @@ check_subscriber(struct LogicalRepInfo *dbinfo)
 					 num_dbs + 1, max_wprocs);
 		pg_log_error_hint("Consider increasing max_worker_processes to at least %d.",
 						  num_dbs + 1);
-		disconnect_database(conn, true);
+		exit(1);
 	}
 }
 
