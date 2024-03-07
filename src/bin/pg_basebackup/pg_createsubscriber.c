@@ -1336,7 +1336,7 @@ wait_for_end_recovery(const char *conninfo, const char *pg_ctl_path,
 
 #define NUM_CONN_ATTEMPTS	5
 
-	pg_log_info("waiting the target server to reach the consistent state");
+	pg_log_info("waiting for the target server to reach the consistent state");
 
 	conn = connect_database(conninfo, true);
 
