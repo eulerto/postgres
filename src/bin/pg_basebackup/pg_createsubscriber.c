@@ -1902,8 +1902,13 @@ main(int argc, char **argv)
 		exit(1);
 
 	pg_log_info("validating connection string on subscriber");
+#if !defined(WIN32)
 	sub_base_conninfo = psprintf("host=%s port=%s user=%s fallback_application_name=%s",
 								 opt.socket_dir, opt.sub_port, opt.sub_username, progname);
+#else				/* WIN32 */
+	sub_base_conninfo = psprintf("port=%s user=%s fallback_application_name=%s",
+								 opt.sub_port, opt.sub_username, progname);
+#endif
 
 	if (opt.database_names.head == NULL)
 	{
