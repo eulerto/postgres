@@ -47,168 +47,27 @@ PostgreSQL documentation
   <title>Description</title>
   <para>
     <application>pg_createsubscriber</application> creates a new logical
-    replica from a physical standby server. It must be run at the target server.
+    replica from a physical standby server. All tables in the specified
+    database are included in the logical replication setup. A pair of
+    publication and subscription objects are created for each database. It
+    must be run at the target server.
+  </para>
+
+  <para>
+    After a successful run, the state of the target server is analagous to a
+    fresh logical replication setup. The main difference between the logical
+    replication setup and <application>pg_createsubscriber</application>
+    is the initial data copy. Only the synchronization phase is done, which
+    ensures each table is brought up to a synchronized state.
   </para>
 
   <para>
    The <application>pg_createsubscriber</application> targets large database
-   systems because it speeds up the logical replication setup. For smaller
-   databases, <link linkend="logical-replication">initial data synchronization</link>
-   is recommended.
+   systems because most of the execution time is spent making the initial data
+   copy. For smaller databases,
+   <link linkend="logical-replication">initial data synchronization</link> is
+   recommended.
   </para>
-
-  <para>
-   There are some prerequisites for <application>pg_createsubscriber</application>
-   to convert the target server into a logical replica. If these are not met an
-   error will be reported.
-  </para>
-
-  <itemizedlist id="app-pg-createsubscriber-description-prerequisites">
-   <listitem>
-    <para>
-     The source and target servers must have the same major version as the
-     <application>pg_createsubscriber</application>.
-    </para>
-   </listitem>
-
-   <listitem>
-    <para>
-     The given target data directory must have the same system identifier than
-     the source data directory. If a standby server is running on the target
-     data directory or it is a base backup from the source data directory,
-     system identifiers are the same.
-    </para>
-   </listitem>
-
-   <listitem>
-    <para>
-     The target server must be used as a physical standby.
-    </para>
-   </listitem>
-
-   <listitem>
-    <para>
-     The given database user for the target data directory must have privileges
-     for creating <link linkend="sql-createsubscription">subscriptions</link>
-     and using <link linkend="pg-replication-origin-advance"><function>pg_replication_origin_advance()</function></link>.
-    </para>
-   </listitem>
-
-   <listitem>
-    <para>
-     The target server must have
-     <link linkend="guc-max-replication-slots"><varname>max_replication_slots</varname></link>
-     and
-     <link linkend="guc-max-logical-replication-workers"><varname>max_logical_replication_workers</varname></link>
-     configured to a value greater than or equal to the number of specified databases.
-    </para>
-   </listitem>
-
-   <listitem>
-    <para>
-     The target server must have
-     <link linkend="guc-max-worker-processes"><varname>max_worker_processes</varname></link>
-     configured to a value greater than the number of specified databases.
-    </para>
-   </listitem>
-
-   <listitem>
-    <para>
-     The target server must accept local connections.
-    </para>
-   </listitem>
-
-   <listitem>
-    <para>
-     The source server must accept connections from the target server.
-    </para>
-   </listitem>
-
-   <listitem>
-    <para>
-     The source server must not be in recovery. Publications cannot be created
-     in a read-only cluster.
-    </para>
-   </listitem>
-
-   <listitem>
-    <para>
-     The source server must have
-     <link linkend="guc-wal-level"><varname>wal_level</varname></link> as
-     <literal>logical</literal>.
-    </para>
-   </listitem>
-
-   <listitem>
-    <para>
-     The source server must have
-     <link linkend="guc-max-replication-slots"><varname>max_replication_slots</varname></link>
-     configured to a value greater than the number of specified databases plus
-     existing replication slots.
-    </para>
-   </listitem>
-
-   <listitem>
-    <para>
-     The source server must have
-     <link linkend="guc-max-wal-senders"><varname>max_wal_senders</varname></link>
-     configured to a value greater than or equal to the number of specified
-     databases and existing <literal>walsender</literal> processes.
-    </para>
-   </listitem>
-  </itemizedlist>
-
-  <warning>
-   <title>Warning</title>
-   <para>
-    If <application>pg_createsubscriber</application> fails while processing,
-    then the data directory is likely not in a state that can be recovered. It
-    is true if the target server was promoted. In such a case, creating a new
-    standby server is recommended.
-   </para>
-
-   <para>
-    <application>pg_createsubscriber</application> usually starts the target
-    server with different connection settings during the transformation steps.
-    Hence, connections to target server might fail.
-   </para>
-
-   <para>
-    During the recovery process, if the target server disconnects from the
-    source server, <application>pg_createsubscriber</application> will check
-    a few times if the connection has been reestablished to stream the required
-    WAL. After a few attempts, it terminates with an error.
-   </para>
-
-   <para>
-    Executing DDL commands on the source server while running
-    <application>pg_createsubscriber</application> is not recommended. If the
-    target server has already been converted to logical replica, the DDL
-    commands must not be replicated so an error would occur.
-   </para>
-
-   <para>
-    If <application>pg_createsubscriber</application> fails while processing,
-    objects (publications, replication slots) created on the source server
-    should be removed. The removal might fail if the target server cannot
-    connect to the source server. In such a case, a warning message will inform
-    the objects left.
-   </para>
-
-   <para>
-    If the replication is using a
-    <link linkend="guc-primary-slot-name"><varname>primary_slot_name</varname></link>,
-    it will be removed from the source server after the logical replication setup.
-   </para>
-
-   <para>
-    <application>pg_createsubscriber</application> changes the system identifier
-    using <application>pg_resetwal</application>. It would avoid situations in
-    which WAL files from the source server might be used by the target server.
-    If the target server has a standby, replication will break and a fresh
-    standby should be created.
-   </para>
-  </warning>
 
  </refsect1>
 
@@ -364,6 +223,106 @@ PostgreSQL documentation
  </refsect1>
 
  <refsect1>
+  <title>Notes</title>
+
+  <para>
+   There are some prerequisites for
+   <application>pg_createsubscriber</application> to convert the target server
+   into a logical replica. If these are not met an error will be reported. The
+   source and target servers must have the same major version as the
+   <application>pg_createsubscriber</application>. The given target data
+   directory must have the same system identifier than the source data
+   directory. If a standby server is running on the target data directory or it
+   is a base backup from the source data directory, system identifiers are the
+   same. The given database user for the target data directory must have
+   privileges for creating
+   <link linkend="sql-createsubscription">subscriptions</link> and using
+   <link linkend="pg-replication-origin-advance"><function>pg_replication_origin_advance()</function></link>.
+  </para>
+
+  <para>
+   The target server must be used as a physical standby. The target server
+   must have
+   <link linkend="guc-max-replication-slots"><varname>max_replication_slots</varname></link>
+   and
+   <link linkend="guc-max-logical-replication-workers"><varname>max_logical_replication_workers</varname></link>
+   configured to a value greater than or equal to the number of specified
+   databases. The target server must have
+   <link linkend="guc-max-worker-processes"><varname>max_worker_processes</varname></link>
+   configured to a value greater than the number of specified databases. The
+   target server must accept local connections.
+  </para>
+
+  <para>
+   The source server must accept connections from the target server. The
+   source server must not be in recovery. Publications cannot be created in a
+   read-only cluster. The source server must have
+   <link linkend="guc-wal-level"><varname>wal_level</varname></link> as
+   <literal>logical</literal>.
+   The source server must have
+   <link linkend="guc-max-replication-slots"><varname>max_replication_slots</varname></link>
+   configured to a value greater than the number of specified databases plus
+   existing replication slots. The source server must have
+   <link linkend="guc-max-wal-senders"><varname>max_wal_senders</varname></link>
+   configured to a value greater than or equal to the number of specified
+   databases and existing <literal>walsender</literal> processes.
+  </para>
+
+  <warning>
+   <title>Warning</title>
+   <para>
+    If <application>pg_createsubscriber</application> fails while processing,
+    then the data directory is likely not in a state that can be recovered. It
+    is true if the target server was promoted. In such a case, creating a new
+    standby server is recommended.
+   </para>
+
+   <para>
+    <application>pg_createsubscriber</application> usually starts the target
+    server with different connection settings during the transformation steps.
+    Hence, connections to target server might fail.
+   </para>
+
+   <para>
+    During the recovery process, if the target server disconnects from the
+    source server, <application>pg_createsubscriber</application> will check
+    a few times if the connection has been reestablished to stream the required
+    WAL. After a few attempts, it terminates with an error.
+   </para>
+
+   <para>
+    Executing DDL commands on the source server while running
+    <application>pg_createsubscriber</application> is not recommended. If the
+    target server has already been converted to logical replica, the DDL
+    commands must not be replicated so an error would occur.
+   </para>
+
+   <para>
+    If <application>pg_createsubscriber</application> fails while processing,
+    objects (publications, replication slots) created on the source server
+    should be removed. The removal might fail if the target server cannot
+    connect to the source server. In such a case, a warning message will inform
+    the objects left.
+   </para>
+
+   <para>
+    If the replication is using a
+    <link linkend="guc-primary-slot-name"><varname>primary_slot_name</varname></link>,
+    it will be removed from the source server after the logical replication setup.
+   </para>
+
+   <para>
+    <application>pg_createsubscriber</application> changes the system identifier
+    using <application>pg_resetwal</application>. It would avoid situations in
+    which WAL files from the source server might be used by the target server.
+    If the target server has a standby, replication will break and a fresh
+    standby should be created.
+   </para>
+  </warning>
+
+ </refsect1>
+
+ <refsect1>
   <title>How It Works</title>
 
   <para>
@@ -383,17 +342,18 @@ PostgreSQL documentation
    <step>
     <para>
      Check if the target server can be converted. There are also a few checks
-     on the source server. All
-     <link linkend="app-pg-createsubscriber-description-prerequisites">prerequisites</link>
-     are checked. If any of them are not met, <application>pg_createsubscriber</application>
-     will terminate with an error.
+     on the source server. If any of the prerequisites are not met,
+     <application>pg_createsubscriber</application> will terminate with an
+     error.
     </para>
    </step>
 
    <step>
     <para>
      Create a publication and replication slot for each specified database on
-     the source server. Each publication has the following name pattern:
+     the source server. Each publication is created using
+     <link linkend="sql-createpublication-params-for-all-tables"><literal>FOR ALL TABLES</literal></link>.
+     It has the following name pattern:
      <quote><literal>pg_createsubscriber_%u</literal></quote> (parameter:
      database <parameter>oid</parameter>). Each replication slot has the
      following name pattern:
