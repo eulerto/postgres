@@ -213,10 +213,6 @@ command_ok(
 	],
 	'run pg_createsubscriber on node S');
 
-ok( -d $node_s->data_dir . "/pg_createsubscriber_output.d",
-	"pg_createsubscriber_output.d/ removed after pg_createsubscriber success"
-);
-
 # Confirm the physical replication slot has been removed
 my $result = $node_p->safe_psql('pg1',
 	"SELECT count(*) FROM pg_replication_slots WHERE slot_name = '$slotname'"

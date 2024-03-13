@@ -134,16 +134,6 @@ PostgreSQL documentation
      </varlistentry>
 
      <varlistentry>
-      <term><option>-r</option></term>
-      <term><option>--retain</option></term>
-      <listitem>
-       <para>
-        Retain log file even after successful completion.
-       </para>
-      </listitem>
-     </varlistentry>
-
-     <varlistentry>
       <term><option>-s <replaceable class="parameter">dir</replaceable></option></term>
       <term><option>--socket-directory=<replaceable class="parameter">dir</replaceable></option></term>
       <listitem>

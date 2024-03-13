@@ -40,7 +40,6 @@ struct CreateSubscriberOptions
 	char	   *sub_port;		/* subscriber port number */
 	const char *sub_username;	/* subscriber username */
 	SimpleStringList database_names;	/* list of database names */
-	bool		retain;			/* retain log file? */
 	int			recovery_timeout;	/* stop recovery after this time */
 }			CreateSubscriberOptions;
 
@@ -87,11 +86,9 @@ static char *create_logical_replication_slot(PGconn *conn,
 											 bool temporary);
 static void drop_replication_slot(PGconn *conn, struct LogicalRepInfo *dbinfo,
 								  const char *slot_name);
-static char *setup_server_logfile(const char *datadir);
 static void pg_ctl_status(const char *pg_ctl_cmd, int rc);
 static void start_standby_server(struct CreateSubscriberOptions *opt,
-								 const char *pg_ctl_path, const char *logfile,
-								 bool with_options);
+								 const char *pg_ctl_path, bool with_options);
 static void stop_standby_server(const char *pg_ctl_path, const char *datadir);
 static void wait_for_end_recovery(const char *conninfo, const char *pg_ctl_path,
 								  struct CreateSubscriberOptions *opt);
@@ -202,7 +199,6 @@ usage(void)
 	printf(_(" -n, --dry-run                       dry run, just show what would be done\n"));
 	printf(_(" -p, --subscriber-port=PORT          subscriber port number (default %s)\n"), DEFAULT_SUB_PORT);
 	printf(_(" -P, --publisher-server=CONNSTR      publisher connection string\n"));
-	printf(_(" -r, --retain                        retain log file after success\n"));
 	printf(_(" -s, --socket-directory=DIR          socket directory to use (default current directory)\n"));
 	printf(_(" -t, --recovery-timeout=SECS         seconds to wait for recovery to end\n"));
 	printf(_(" -U, --subscriber-username=NAME      subscriber username\n"));
@@ -1192,51 +1188,6 @@ drop_replication_slot(PGconn *conn, struct LogicalRepInfo *dbinfo,
 }
 
 /*
- * Create a directory to store any log information. Adjust the permissions.
- * Return a file name (full path) that's used by the standby server when it
- * starts the transformation.
- * In dry run mode, doesn't create the BASE_OUTPUT_DIR directory, instead
- * returns the full log file path.
- */
-static char *
-setup_server_logfile(const char *datadir)
-{
-	char		timebuf[128];
-	struct timeval time;
-	time_t		tt;
-	int			len;
-	char	   *base_dir;
-	char	   *filename;
-
-	base_dir = (char *) pg_malloc0(MAXPGPATH);
-	len = snprintf(base_dir, MAXPGPATH, "%s/%s", datadir, BASE_OUTPUT_DIR);
-	if (len >= MAXPGPATH)
-		pg_fatal("directory path for subscriber is too long");
-
-	if (!GetDataDirectoryCreatePerm(datadir))
-		pg_fatal("could not read permissions of directory \"%s\": %m",
-				 datadir);
-
-	if (!dry_run && mkdir(base_dir, pg_dir_create_mode) < 0 && errno != EEXIST)
-		pg_fatal("could not create directory \"%s\": %m", base_dir);
-
-	/* Append timestamp with ISO 8601 format */
-	gettimeofday(&time, NULL);
-	tt = (time_t) time.tv_sec;
-	strftime(timebuf, sizeof(timebuf), "%Y%m%dT%H%M%S", localtime(&tt));
-	snprintf(timebuf + strlen(timebuf), sizeof(timebuf) - strlen(timebuf),
-			 ".%03d", (int) (time.tv_usec / 1000));
-
-	filename = (char *) pg_malloc0(MAXPGPATH);
-	len = snprintf(filename, MAXPGPATH, "%s/server_start_%s.log", base_dir, timebuf);
-	pg_log_debug("log file is: %s", filename);
-	if (len >= MAXPGPATH)
-		pg_fatal("log file path is too long");
-
-	return filename;
-}
-
-/*
  * Reports a suitable message if pg_ctl fails.
  */
 static void
@@ -1271,7 +1222,7 @@ pg_ctl_status(const char *pg_ctl_cmd, int rc)
 
 static void
 start_standby_server(struct CreateSubscriberOptions *opt, const char *pg_ctl_path,
-					 const char *logfile, bool with_options)
+					 bool with_options)
 {
 	PQExpBuffer pg_ctl_cmd = createPQExpBuffer();
 	char		socket_string[MAXPGPATH + 200];
@@ -1299,16 +1250,8 @@ start_standby_server(struct CreateSubscriberOptions *opt, const char *pg_ctl_pat
 	appendPQExpBuffer(pg_ctl_cmd, "\"%s\" start -D \"%s\" -s",
 					  pg_ctl_path, opt->subscriber_dir);
 	if (with_options)
-	{
-		/*
-		 * Don't include the log file in dry run mode because the directory
-		 * that contains it was not created in setup_server_logfile().
-		 */
-		if (!dry_run)
-			appendPQExpBuffer(pg_ctl_cmd, " -l \"%s\"", logfile);
 		appendPQExpBuffer(pg_ctl_cmd, " -o \"-p %s%s\"",
 						  opt->sub_port, socket_string);
-	}
 	pg_log_debug("pg_ctl command is: %s", pg_ctl_cmd->data);
 	rc = system(pg_ctl_cmd->data);
 	pg_ctl_status(pg_ctl_cmd->data, rc);
@@ -1698,7 +1641,6 @@ main(int argc, char **argv)
 		{"dry-run", no_argument, NULL, 'n'},
 		{"subscriber-port", required_argument, NULL, 'p'},
 		{"publisher-server", required_argument, NULL, 'P'},
-		{"retain", no_argument, NULL, 'r'},
 		{"socket-directory", required_argument, NULL, 's'},
 		{"recovery-timeout", required_argument, NULL, 't'},
 		{"subscriber-username", required_argument, NULL, 'U'},
@@ -1715,8 +1657,6 @@ main(int argc, char **argv)
 
 	char	   *pg_ctl_path = NULL;
 	char	   *pg_resetwal_path = NULL;
-
-	char	   *server_start_log;
 
 	char	   *pub_base_conninfo;
 	char	   *sub_base_conninfo;
@@ -1761,7 +1701,6 @@ main(int argc, char **argv)
 	{
 		NULL, NULL
 	};
-	opt.retain = false;
 	opt.recovery_timeout = 0;
 
 	/*
@@ -1780,7 +1719,7 @@ main(int argc, char **argv)
 
 	get_restricted_token();
 
-	while ((c = getopt_long(argc, argv, "d:D:np:P:rs:t:U:v",
+	while ((c = getopt_long(argc, argv, "d:D:np:P:s:t:U:v",
 							long_options, &option_index)) != -1)
 	{
 		switch (c)
@@ -1806,9 +1745,6 @@ main(int argc, char **argv)
 				break;
 			case 'P':
 				opt.pub_conninfo_str = pg_strdup(optarg);
-				break;
-			case 'r':
-				opt.retain = true;
 				break;
 			case 's':
 				opt.socket_dir = pg_strdup(optarg);
@@ -1963,9 +1899,6 @@ main(int argc, char **argv)
 	if (pub_sysid != sub_sysid)
 		pg_fatal("subscriber data directory is not a copy of the source database cluster");
 
-	/* Create the output directory to store any data generated by this tool */
-	server_start_log = setup_server_logfile(opt.subscriber_dir);
-
 	/* Subscriber PID file */
 	snprintf(pidfile, MAXPGPATH, "%s/postmaster.pid", opt.subscriber_dir);
 
@@ -1987,7 +1920,7 @@ main(int argc, char **argv)
 	 * transformation steps.
 	 */
 	pg_log_info("starting the standby with command-line options");
-	start_standby_server(&opt, pg_ctl_path, server_start_log, true);
+	start_standby_server(&opt, pg_ctl_path, true);
 
 	/* Check if the standby server is ready for logical replication */
 	check_subscriber(dbinfo);
@@ -2017,7 +1950,7 @@ main(int argc, char **argv)
 	 */
 	pg_log_info("stopping and starting the subscriber");
 	stop_standby_server(pg_ctl_path, opt.subscriber_dir);
-	start_standby_server(&opt, pg_ctl_path, server_start_log, true);
+	start_standby_server(&opt, pg_ctl_path, true);
 
 	/* Waiting the subscriber to be promoted */
 	wait_for_end_recovery(dbinfo[0].subconninfo, pg_ctl_path, &opt);
@@ -2047,14 +1980,7 @@ main(int argc, char **argv)
 	 * the command-line options.
 	 */
 	if (dry_run)
-		start_standby_server(&opt, pg_ctl_path, NULL, false);
-
-	/*
-	 * The log file is kept if retain option is specified or this tool does
-	 * not run successfully. Otherwise, log file is removed.
-	 */
-	if (!dry_run && !opt.retain)
-		unlink(server_start_log);
+		start_standby_server(&opt, pg_ctl_path, false);
 
 	success = true;
 
