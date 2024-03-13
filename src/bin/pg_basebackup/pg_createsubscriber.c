@@ -685,6 +685,8 @@ server_is_in_recovery(PGconn *conn)
 
 /*
  * Is the primary server ready for logical replication?
+ *
+ * XXX Does it disallow a synchronous replica?
  */
 static void
 check_publisher(struct LogicalRepInfo *dbinfo)
@@ -835,6 +837,14 @@ check_publisher(struct LogicalRepInfo *dbinfo)
 
 /*
  * Is the standby server ready for logical replication?
+ *
+ * XXX Does it disallow a time-delayed replica?
+ *
+ * XXX In a cascaded replication scenario (P -> S -> C), if the target server
+ * is S, it cannot detect there is a replica (server C) because server S starts
+ * accepting only local connections and server C cannot connect to it. Hence,
+ * there is not reliable way to provide a suitable error saying the server C
+ * will be broken at the end of this process (due to pg_resetwal).
  */
 static void
 check_subscriber(struct LogicalRepInfo *dbinfo)
