@@ -1851,7 +1851,7 @@ main(int argc, char **argv)
 #if !defined(WIN32)
 	sub_base_conninfo = psprintf("host=%s port=%s user=%s fallback_application_name=%s",
 								 opt.socket_dir, opt.sub_port, opt.sub_username, progname);
-#else				/* WIN32 */
+#else							/* WIN32 */
 	sub_base_conninfo = psprintf("port=%s user=%s fallback_application_name=%s",
 								 opt.sub_port, opt.sub_username, progname);
 #endif
