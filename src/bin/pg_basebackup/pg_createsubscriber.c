@@ -39,6 +39,9 @@ struct CreateSubscriberOptions
 	char	   *sub_port;		/* subscriber port number */
 	const char *sub_username;	/* subscriber username */
 	SimpleStringList database_names;	/* list of database names */
+	SimpleStringList pub_names; /* list of publication names */
+	SimpleStringList sub_names; /* list of subscription names */
+	SimpleStringList replslot_names;	/* list of replication slot names */
 	int			recovery_timeout;	/* stop recovery after this time */
 }			CreateSubscriberOptions;
 
@@ -63,7 +66,7 @@ static char *get_sub_conninfo(struct CreateSubscriberOptions *opt);
 static char *get_exec_path(const char *argv0, const char *progname);
 static void check_data_directory(const char *datadir);
 static char *concat_conninfo_dbname(const char *conninfo, const char *dbname);
-static struct LogicalRepInfo *store_pub_sub_info(SimpleStringList dbnames,
+static struct LogicalRepInfo *store_pub_sub_info(struct CreateSubscriberOptions *opt,
 												 const char *pub_base_conninfo,
 												 const char *sub_base_conninfo);
 static PGconn *connect_database(const char *conninfo, bool exit_on_error);
@@ -72,6 +75,7 @@ static uint64 get_primary_sysid(const char *conninfo);
 static uint64 get_standby_sysid(const char *datadir);
 static void modify_subscriber_sysid(struct CreateSubscriberOptions *opt);
 static bool server_is_in_recovery(PGconn *conn);
+static char *generate_object_name(PGconn *conn);
 static void check_publisher(struct LogicalRepInfo *dbinfo);
 static char *setup_publisher(struct LogicalRepInfo *dbinfo);
 static void check_subscriber(struct LogicalRepInfo *dbinfo);
@@ -110,6 +114,9 @@ static bool success = false;
 
 static struct LogicalRepInfo *dbinfo;
 static int	num_dbs = 0;
+static int	num_pubs = 0;
+static int	num_subs = 0;
+static int	num_replslots = 0;
 
 static char *pg_ctl_path = NULL;
 static char *pg_resetwal_path = NULL;
@@ -214,6 +221,9 @@ usage(void)
 	printf(_(" -v, --verbose                       output verbose messages\n"));
 	printf(_("     --config-file=FILENAME          use specified main server configuration\n"
 			 "                                     file when running target cluster\n"));
+	printf(_("     --publication=NAME              publication name\n"));
+	printf(_("     --replication-slot=NAME         replication slot name\n"));
+	printf(_("     --subscription=NAME             subscription name\n"));
 	printf(_(" -V, --version                       output version information, then exit\n"));
 	printf(_(" -?, --help                          show this help, then exit\n"));
 	printf(_("\nReport bugs to <%s>.\n"), PACKAGE_BUGREPORT);
@@ -395,17 +405,31 @@ concat_conninfo_dbname(const char *conninfo, const char *dbname)
 
 /*
  * Store publication and subscription information.
+ *
+ * If publication, replication slot and subscription names were specified,
+ * store it here. Otherwise, a generated name will be assigned to the object in
+ * setup_publisher().
  */
 static struct LogicalRepInfo *
-store_pub_sub_info(SimpleStringList dbnames, const char *pub_base_conninfo,
+store_pub_sub_info(struct CreateSubscriberOptions *opt, const char *pub_base_conninfo,
 				   const char *sub_base_conninfo)
 {
 	struct LogicalRepInfo *dbinfo;
+	SimpleStringListCell *pubcell = NULL;
+	SimpleStringListCell *subcell = NULL;
+	SimpleStringListCell *replslotcell = NULL;
 	int			i = 0;
 
 	dbinfo = (struct LogicalRepInfo *) pg_malloc(num_dbs * sizeof(struct LogicalRepInfo));
 
-	for (SimpleStringListCell *cell = dbnames.head; cell; cell = cell->next)
+	if (num_pubs > 0)
+		pubcell = opt->pub_names.head;
+	if (num_subs > 0)
+		subcell = opt->sub_names.head;
+	if (num_replslots > 0)
+		replslotcell = opt->replslot_names.head;
+
+	for (SimpleStringListCell *cell = opt->database_names.head; cell; cell = cell->next)
 	{
 		char	   *conninfo;
 
@@ -413,15 +437,39 @@ store_pub_sub_info(SimpleStringList dbnames, const char *pub_base_conninfo,
 		conninfo = concat_conninfo_dbname(pub_base_conninfo, cell->val);
 		dbinfo[i].pubconninfo = conninfo;
 		dbinfo[i].dbname = cell->val;
+		if (num_pubs > 0)
+			dbinfo[i].pubname = pubcell->val;
+		else
+			dbinfo[i].pubname = NULL;
+		if (num_replslots > 0)
+			dbinfo[i].replslotname = replslotcell->val;
+		else
+			dbinfo[i].replslotname = NULL;
 		dbinfo[i].made_replslot = false;
 		dbinfo[i].made_publication = false;
 		/* Fill subscriber attributes */
 		conninfo = concat_conninfo_dbname(sub_base_conninfo, cell->val);
 		dbinfo[i].subconninfo = conninfo;
+		if (num_subs > 0)
+			dbinfo[i].subname = subcell->val;
+		else
+			dbinfo[i].subname = NULL;
 		/* Other fields will be filled later */
 
-		pg_log_debug("publisher(%d): connection string: %s", i, dbinfo[i].pubconninfo);
-		pg_log_debug("subscriber(%d): connection string: %s", i, dbinfo[i].subconninfo);
+		pg_log_debug("publisher(%d): publication: %s ; replication slot: %s ; connection string: %s", i,
+					 dbinfo[i].pubname ? dbinfo[i].pubname : "(auto)",
+					 dbinfo[i].replslotname ? dbinfo[i].replslotname : "(auto)",
+					 dbinfo[i].pubconninfo);
+		pg_log_debug("subscriber(%d): subscription: %s ; connection string: %s", i,
+					 dbinfo[i].subname ? dbinfo[i].subname : "(auto)",
+					 dbinfo[i].subconninfo);
+
+		if (num_pubs > 0)
+			pubcell = pubcell->next;
+		if (num_subs > 0)
+			subcell = subcell->next;
+		if (num_replslots > 0)
+			replslotcell = replslotcell->next;
 
 		i++;
 	}
@@ -606,6 +654,57 @@ modify_subscriber_sysid(struct CreateSubscriberOptions *opt)
 }
 
 /*
+ * Generate an object name using a prefix, database oid and a random integer.
+ * It is used in case the user does not specify an object name (publication,
+ * subscription, replication slot).
+ */
+static char *
+generate_object_name(PGconn *conn)
+{
+	PGresult   *res;
+	Oid			oid;
+	uint32		rand;
+	pg_prng_state prng_state;
+	char	   *objname;
+
+	pg_prng_seed(&prng_state, (uint64) (getpid() ^ time(NULL)));
+
+	res = PQexec(conn,
+				 "SELECT oid FROM pg_catalog.pg_database "
+				 "WHERE datname = pg_catalog.current_database()");
+	if (PQresultStatus(res) != PGRES_TUPLES_OK)
+	{
+		pg_log_error("could not obtain database OID: %s",
+					 PQresultErrorMessage(res));
+		disconnect_database(conn, true);
+	}
+
+	if (PQntuples(res) != 1)
+	{
+		pg_log_error("could not obtain database OID: got %d rows, expected %d rows",
+					 PQntuples(res), 1);
+		disconnect_database(conn, true);
+	}
+
+	/* Database OID */
+	oid = strtoul(PQgetvalue(res, 0, 0), NULL, 10);
+
+	PQclear(res);
+
+	/* Random unsigned integer */
+	rand = pg_prng_uint32(&prng_state);
+
+	/*
+	 * Build the object name. The name must not exceed NAMEDATALEN - 1. This
+	 * current schema uses a maximum of 40 characters (20 + 10 + 1 + 8 +
+	 * '\0').
+	 */
+	objname = psprintf("pg_createsubscriber_%u_%x", oid, rand);
+
+	return objname;
+}
+
+/*
  * Create the publications and replication slots in preparation for logical
  * replication. Returns the LSN from latest replication slot. It will be the
  * replication start point that is used to adjust the subscriptions (see
@@ -614,54 +713,27 @@ modify_subscriber_sysid(struct CreateSubscriberOptions *opt)
 static char *
 setup_publisher(struct LogicalRepInfo *dbinfo)
 {
-	pg_prng_state prng_state;
 	char	   *lsn = NULL;
-
-	pg_prng_seed(&prng_state, (uint64) (getpid() ^ time(NULL)));
 
 	for (int i = 0; i < num_dbs; i++)
 	{
 		PGconn	   *conn;
-		PGresult   *res;
-		char		pubname[NAMEDATALEN];
-		char		replslotname[NAMEDATALEN];
-		uint32		rand;
+		char	   *genname = NULL;
 
 		conn = connect_database(dbinfo[i].pubconninfo, true);
 
-		res = PQexec(conn,
-					 "SELECT oid FROM pg_catalog.pg_database "
-					 "WHERE datname = pg_catalog.current_database()");
-		if (PQresultStatus(res) != PGRES_TUPLES_OK)
-		{
-			pg_log_error("could not obtain database OID: %s",
-						 PQresultErrorMessage(res));
-			disconnect_database(conn, true);
-		}
-
-		if (PQntuples(res) != 1)
-		{
-			pg_log_error("could not obtain database OID: got %d rows, expected %d rows",
-						 PQntuples(res), 1);
-			disconnect_database(conn, true);
-		}
-
-		/* Remember database OID */
-		dbinfo[i].oid = strtoul(PQgetvalue(res, 0, 0), NULL, 10);
-
-		PQclear(res);
-
-		/* Random unsigned integer */
-		rand = pg_prng_uint32(&prng_state);
-
 		/*
-		 * Build the publication name. The name must not exceed NAMEDATALEN -
-		 * 1. This current schema uses a maximum of 40 characters (20 + 10 + 1
-		 * + 8 + '\0').
+		 * If an object name was not specified as command-line options, assign
+		 * a generated object name.
 		 */
-		snprintf(pubname, sizeof(pubname), "pg_createsubscriber_%u_%x",
-				 dbinfo[i].oid, rand);
-		dbinfo[i].pubname = pg_strdup(pubname);
+		if (num_pubs == 0 || num_subs == 0 || num_replslots == 0)
+			genname = generate_object_name(conn);
+		if (num_pubs == 0)
+			dbinfo[i].pubname = pg_strdup(genname);
+		if (num_subs == 0)
+			dbinfo[i].subname = pg_strdup(genname);
+		if (num_replslots == 0)
+			dbinfo[i].replslotname = pg_strdup(genname);
 
 		/*
 		 * Create publication on publisher. This step should be executed
@@ -671,27 +743,13 @@ setup_publisher(struct LogicalRepInfo *dbinfo)
 		 */
 		create_publication(conn, &dbinfo[i]);
 
-		/*
-		 * Build the replication slot name. The name must not exceed
-		 * NAMEDATALEN - 1. This current schema uses a maximum of 40
-		 * characters (20 + 10 + 1 + 8 + '\0'). A random number is included to
-		 * reduce the probability of collision. By default, subscription name
-		 * is used as replication slot name.
-		 */
-		snprintf(replslotname, sizeof(replslotname),
-				 "pg_createsubscriber_%u_%x",
-				 dbinfo[i].oid,
-				 rand);
-		dbinfo[i].replslotname = pg_strdup(replslotname);
-		dbinfo[i].subname = pg_strdup(replslotname);
-
 		/* Create replication slot on publisher */
 		if (lsn)
 			pg_free(lsn);
 		lsn = create_logical_replication_slot(conn, &dbinfo[i]);
 		if (lsn != NULL || dry_run)
 			pg_log_info("create replication slot \"%s\" on publisher",
-						replslotname);
+						dbinfo[i].replslotname);
 		else
 			exit(1);
 
@@ -1427,8 +1485,8 @@ create_publication(PGconn *conn, struct LogicalRepInfo *dbinfo)
 		 * Unfortunately, if it reaches this code path, it will always fail
 		 * (unless you decide to change the existing publication name). That's
 		 * bad but it is very unlikely that the user will choose a name with
-		 * pg_createsubscriber_ prefix followed by the exact database oid and a
-		 * random number.
+		 * pg_createsubscriber_ prefix followed by the exact database oid and
+		 * a random number.
 		 */
 		pg_log_error("publication \"%s\" already exists", dbinfo->pubname);
 		pg_log_error_hint("Consider renaming this publication before continuing.");
@@ -1680,6 +1738,9 @@ main(int argc, char **argv)
 	static struct option long_options[] =
 	{
 		{"config-file", required_argument, NULL, 1},
+		{"publication", required_argument, NULL, 2},
+		{"replication-slot", required_argument, NULL, 3},
+		{"subscription", required_argument, NULL, 4},
 		{"database", required_argument, NULL, 'd'},
 		{"pgdata", required_argument, NULL, 'D'},
 		{"dry-run", no_argument, NULL, 'n'},
@@ -1767,11 +1828,15 @@ main(int argc, char **argv)
 		switch (c)
 		{
 			case 'd':
-				/* Ignore duplicated database names */
 				if (!simple_string_list_member(&opt.database_names, optarg))
 				{
 					simple_string_list_append(&opt.database_names, optarg);
 					num_dbs++;
+				}
+				else
+				{
+					pg_log_error("duplicate database \"%s\"", optarg);
+					exit(1);
 				}
 				break;
 			case 'D':
@@ -1803,6 +1868,42 @@ main(int argc, char **argv)
 				break;
 			case 1:
 				opt.config_file = pg_strdup(optarg);
+				break;
+			case 2:
+				if (!simple_string_list_member(&opt.pub_names, optarg))
+				{
+					simple_string_list_append(&opt.pub_names, optarg);
+					num_pubs++;
+				}
+				else
+				{
+					pg_log_error("duplicate publication \"%s\"", optarg);
+					exit(1);
+				}
+				break;
+			case 3:
+				if (!simple_string_list_member(&opt.replslot_names, optarg))
+				{
+					simple_string_list_append(&opt.replslot_names, optarg);
+					num_replslots++;
+				}
+				else
+				{
+					pg_log_error("duplicate replication slot \"%s\"", optarg);
+					exit(1);
+				}
+				break;
+			case 4:
+				if (!simple_string_list_member(&opt.sub_names, optarg))
+				{
+					simple_string_list_append(&opt.sub_names, optarg);
+					num_subs++;
+				}
+				else
+				{
+					pg_log_error("duplicate subscription \"%s\"", optarg);
+					exit(1);
+				}
 				break;
 			default:
 				/* getopt_long already emitted a complaint */
@@ -1890,6 +1991,29 @@ main(int argc, char **argv)
 		}
 	}
 
+	/* Number of object names must match number of databases */
+	if (num_pubs > 0 && num_pubs != num_dbs)
+	{
+		pg_log_error("wrong number of publication names");
+		pg_log_error_hint("Number of publication names (%d) must match number of database names (%d).",
+						  num_pubs, num_dbs);
+		exit(1);
+	}
+	if (num_subs > 0 && num_subs != num_dbs)
+	{
+		pg_log_error("wrong number of subscription names");
+		pg_log_error_hint("Number of subscription names (%d) must match number of database names (%d).",
+						  num_subs, num_dbs);
+		exit(1);
+	}
+	if (num_replslots > 0 && num_replslots != num_dbs)
+	{
+		pg_log_error("wrong number of replication slot names");
+		pg_log_error_hint("Number of replication slot names (%d) must match number of database names (%d).",
+						  num_replslots, num_dbs);
+		exit(1);
+	}
+
 	/* Get the absolute path of pg_ctl and pg_resetwal on the subscriber */
 	pg_ctl_path = get_exec_path(argv[0], "pg_ctl");
 	pg_resetwal_path = get_exec_path(argv[0], "pg_resetwal");
@@ -1902,8 +2026,7 @@ main(int argc, char **argv)
 	 * called before atexit() because its return is used in the
 	 * cleanup_objects_atexit().
 	 */
-	dbinfo = store_pub_sub_info(opt.database_names, pub_base_conninfo,
-								sub_base_conninfo);
+	dbinfo = store_pub_sub_info(&opt, pub_base_conninfo, sub_base_conninfo);
 
 	/* Register a function to clean up objects in case of failure */
 	atexit(cleanup_objects_atexit);

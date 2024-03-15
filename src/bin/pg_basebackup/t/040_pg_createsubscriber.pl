@@ -29,6 +29,62 @@ command_fails(
 		'--publisher-server', 'port=5432'
 	],
 	'no database name specified');
+command_fails(
+	[
+		'pg_createsubscriber', '--verbose',
+		'--pgdata', $datadir,
+		'--publisher-server', 'port=5432',
+		'--database', 'pg1',
+		'--database', 'pg1'
+	],
+	'duplicate database name');
+command_fails(
+	[
+		'pg_createsubscriber', '--verbose',
+		'--pgdata', $datadir,
+		'--publisher-server', 'port=5432',
+		'--publication', 'foo1',
+		'--publication', 'foo1',
+		'--database', 'pg1',
+		'--database', 'pg2'
+	],
+	'duplicate publication name');
+command_fails(
+	[
+		'pg_createsubscriber', '--verbose',
+		'--pgdata', $datadir,
+		'--publisher-server', 'port=5432',
+		'--publication', 'foo1',
+		'--database', 'pg1',
+		'--database', 'pg2'
+	],
+	'wrong number of publication names');
+command_fails(
+	[
+		'pg_createsubscriber', '--verbose',
+		'--pgdata', $datadir,
+		'--publisher-server', 'port=5432',
+		'--publication', 'foo1',
+		'--publication', 'foo2',
+		'--subscription', 'bar1',
+		'--database', 'pg1',
+		'--database', 'pg2'
+	],
+	'wrong number of subscription names');
+command_fails(
+	[
+		'pg_createsubscriber', '--verbose',
+		'--pgdata', $datadir,
+		'--publisher-server', 'port=5432',
+		'--publication', 'foo1',
+		'--publication', 'foo2',
+		'--subscription', 'bar1',
+		'--subscription', 'bar2',
+		'--replication-slot', 'baz1',
+		'--database', 'pg1',
+		'--database', 'pg2'
+	],
+	'wrong number of replication slot names');
 
 # Set up node P as primary
 my $node_p = PostgreSQL::Test::Cluster->new('node_p');
@@ -176,6 +232,10 @@ command_ok(
 		$node_p->connstr('pg1'),
 		'--socket-directory', $node_s->host,
 		'--subscriber-port', $node_s->port,
+		'--publication', 'pub1',
+		'--publication', 'pub2',
+		'--subscription', 'sub1',
+		'--subscription', 'sub2',
 		'--database', 'pg1',
 		'--database', 'pg2'
 	],
@@ -193,7 +253,8 @@ command_ok(
 		$node_s->data_dir, '--publisher-server',
 		$node_p->connstr('pg1'),
 		'--socket-directory', $node_s->host,
-		'--subscriber-port', $node_s->port
+		'--subscriber-port', $node_s->port,
+		'--replication-slot', 'replslot1'
 	],
 	'run pg_createsubscriber without --databases');
 
