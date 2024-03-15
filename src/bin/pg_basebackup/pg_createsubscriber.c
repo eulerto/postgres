@@ -49,7 +49,8 @@ struct LogicalRepInfo
 	char	   *pubconninfo;	/* publisher connection string */
 	char	   *subconninfo;	/* subscriber connection string */
 	char	   *pubname;		/* publication name */
-	char	   *subname;		/* subscription name / replication slot name */
+	char	   *subname;		/* subscription name */
+	char	   *replslotname;	/* replication slot name */
 
 	bool		made_replslot;	/* replication slot was created */
 	bool		made_publication;	/* publication was created */
@@ -164,7 +165,7 @@ cleanup_objects_atexit(void)
 				if (dbinfo[i].made_publication)
 					drop_publication(conn, &dbinfo[i]);
 				if (dbinfo[i].made_replslot)
-					drop_replication_slot(conn, &dbinfo[i], dbinfo[i].subname);
+					drop_replication_slot(conn, &dbinfo[i], dbinfo[i].replslotname);
 				disconnect_database(conn, false);
 			}
 			else
@@ -183,7 +184,7 @@ cleanup_objects_atexit(void)
 				if (dbinfo[i].made_replslot)
 				{
 					pg_log_warning("There might be a replication slot \"%s\" in database \"%s\" on primary",
-								   dbinfo[i].subname, dbinfo[i].dbname);
+								   dbinfo[i].replslotname, dbinfo[i].dbname);
 					pg_log_warning_hint("Drop this replication slot soon to avoid retention of WAL files.");
 				}
 			}
@@ -681,6 +682,7 @@ setup_publisher(struct LogicalRepInfo *dbinfo)
 				 "pg_createsubscriber_%u_%x",
 				 dbinfo[i].oid,
 				 rand);
+		dbinfo[i].replslotname = pg_strdup(replslotname);
 		dbinfo[i].subname = pg_strdup(replslotname);
 
 		/* Create replication slot on publisher */
@@ -1162,7 +1164,7 @@ create_logical_replication_slot(PGconn *conn, struct LogicalRepInfo *dbinfo)
 
 	Assert(conn != NULL);
 
-	snprintf(slot_name, NAMEDATALEN, "%s", dbinfo->subname);
+	snprintf(slot_name, NAMEDATALEN, "%s", dbinfo->replslotname);
 
 	pg_log_info("creating the replication slot \"%s\" on database \"%s\"",
 				slot_name, dbinfo->dbname);
@@ -1506,11 +1508,10 @@ drop_publication(PGconn *conn, struct LogicalRepInfo *dbinfo)
 /*
  * Create a subscription with some predefined options.
  *
- * A replication slot was already created in a previous step. Let's use it. By
- * default, the subscription name is used as replication slot name. It is
- * not required to copy data. The subscription will be created but it will not
- * be enabled now. That's because the replication progress must be set and the
- * replication origin name (one of the function arguments) contains the
+ * A replication slot was already created in a previous step. Let's use it.  It
+ * is not required to copy data. The subscription will be created but it will
+ * not be enabled now. That's because the replication progress must be set and
+ * the replication origin name (one of the function arguments) contains the
  * subscription OID in its name. Once the subscription is created,
  * set_replication_progress() can obtain the chosen origin name and set up its
  * initial location.
@@ -1528,8 +1529,10 @@ create_subscription(PGconn *conn, struct LogicalRepInfo *dbinfo)
 
 	appendPQExpBuffer(str,
 					  "CREATE SUBSCRIPTION %s CONNECTION '%s' PUBLICATION %s "
-					  "WITH (create_slot = false, copy_data = false, enabled = false)",
-					  dbinfo->subname, dbinfo->pubconninfo, dbinfo->pubname);
+					  "WITH (create_slot = false, enabled = false, "
+					  "slot_name = '%s', copy_data = false)",
+					  dbinfo->subname, dbinfo->pubconninfo, dbinfo->pubname,
+					  dbinfo->replslotname);
 
 	pg_log_debug("command is: %s", str->data);
 
