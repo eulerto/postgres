@@ -2075,6 +2075,16 @@ main(int argc, char **argv)
 	check_publisher(dbinfo);
 
 	/*
+	 * Stop the target server. The recovery process requires that the server
+	 * reaches a consistent state before targeting the recovery stop point.
+	 * Make sure a consistent state is reached (stop the target server
+	 * guarantees it) *before* creating the replication slots in
+	 * setup_publisher().
+	 */
+	pg_log_info("stopping the subscriber");
+	stop_standby_server(subscriber_dir);
+
+	/*
 	 * Create the required objects for each database on publisher. This step
 	 * is here mainly because if we stop the standby we cannot verify if the
 	 * primary slot is in use. We could use an extra connection for it but it
@@ -2086,11 +2096,10 @@ main(int argc, char **argv)
 	setup_recovery(dbinfo, subscriber_dir, consistent_lsn);
 
 	/*
-	 * Restart subscriber so the recovery parameters will take effect. Wait
+	 * Start subscriber so the recovery parameters will take effect. Wait
 	 * until accepting connections.
 	 */
-	pg_log_info("stopping and starting the subscriber");
-	stop_standby_server(subscriber_dir);
+	pg_log_info("starting the subscriber");
 	start_standby_server(&opt, true);
 
 	/* Waiting the subscriber to be promoted */
