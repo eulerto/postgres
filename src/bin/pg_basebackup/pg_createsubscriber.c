@@ -43,7 +43,7 @@ struct CreateSubscriberOptions
 	SimpleStringList sub_names; /* list of subscription names */
 	SimpleStringList replslot_names;	/* list of replication slot names */
 	int			recovery_timeout;	/* stop recovery after this time */
-}			CreateSubscriberOptions;
+};
 
 struct LogicalRepInfo
 {
@@ -57,11 +57,11 @@ struct LogicalRepInfo
 
 	bool		made_replslot;	/* replication slot was created */
 	bool		made_publication;	/* publication was created */
-}			LogicalRepInfo;
+};
 
 static void cleanup_objects_atexit(void);
 static void usage();
-static char *get_base_conninfo(char *conninfo, char **dbname);
+static char *get_base_conninfo(const char *conninfo, char **dbname);
 static char *get_sub_conninfo(struct CreateSubscriberOptions *opt);
 static char *get_exec_path(const char *argv0, const char *progname);
 static void check_data_directory(const char *datadir);
@@ -81,10 +81,10 @@ static char *setup_publisher(struct LogicalRepInfo *dbinfo);
 static void check_subscriber(struct LogicalRepInfo *dbinfo);
 static void setup_subscriber(struct LogicalRepInfo *dbinfo,
 							 const char *consistent_lsn);
-static void setup_recovery(struct LogicalRepInfo *dbinfo, char *datadir,
-						   char *lsn);
+static void setup_recovery(struct LogicalRepInfo *dbinfo, const char *datadir,
+						   const char *lsn);
 static void drop_primary_replication_slot(struct LogicalRepInfo *dbinfo,
-										  char *slotname);
+										  const char *slotname);
 static char *create_logical_replication_slot(PGconn *conn,
 											 struct LogicalRepInfo *dbinfo);
 static void drop_replication_slot(PGconn *conn, struct LogicalRepInfo *dbinfo,
@@ -113,10 +113,12 @@ static bool dry_run = false;
 static bool success = false;
 
 static struct LogicalRepInfo *dbinfo;
-static int	num_dbs = 0;
-static int	num_pubs = 0;
-static int	num_subs = 0;
-static int	num_replslots = 0;
+static int	num_dbs = 0;		/* number of specified databases */
+static int	num_pubs = 0;		/* number of specified publications */
+static int	num_subs = 0;		/* number of specified subscriptions */
+static int	num_replslots = 0;	/* number of specified replication slots */
+
+static pg_prng_state prng_state;
 
 static char *pg_ctl_path = NULL;
 static char *pg_resetwal_path = NULL;
@@ -138,9 +140,12 @@ enum WaitPMResult
  * Cleanup objects that were created by pg_createsubscriber if there is an
  * error.
  *
- * Replication slots, publications and subscriptions are created. Depending on
- * the step it failed, it should remove the already created objects if it is
+ * Publications and replication slots are created on primary. Depending on the
+ * step it failed, it should remove the already created objects if it is
  * possible (sometimes it won't work due to a connection issue).
+ * There is no cleanup on the target server. The steps on the target server are
+ * executed *after* promotion, hence, at this point, a failure means recreate
+ * the physical replica and start again.
  */
 static void
 cleanup_objects_atexit(void)
@@ -244,7 +249,7 @@ usage(void)
  * dbname.
  */
 static char *
-get_base_conninfo(char *conninfo, char **dbname)
+get_base_conninfo(const char *conninfo, char **dbname)
 {
 	PQExpBuffer buf = createPQExpBuffer();
 	PQconninfoOption *conn_opts = NULL;
@@ -664,10 +669,7 @@ generate_object_name(PGconn *conn)
 	PGresult   *res;
 	Oid			oid;
 	uint32		rand;
-	pg_prng_state prng_state;
 	char	   *objname;
-
-	pg_prng_seed(&prng_state, (uint64) (getpid() ^ time(NULL)));
 
 	res = PQexec(conn,
 				 "SELECT oid FROM pg_catalog.pg_database "
@@ -715,6 +717,8 @@ setup_publisher(struct LogicalRepInfo *dbinfo)
 {
 	char	   *lsn = NULL;
 
+	pg_prng_seed(&prng_state, (uint64) (getpid() ^ time(NULL)));
+
 	for (int i = 0; i < num_dbs; i++)
 	{
 		PGconn	   *conn;
@@ -724,7 +728,10 @@ setup_publisher(struct LogicalRepInfo *dbinfo)
 
 		/*
 		 * If an object name was not specified as command-line options, assign
-		 * a generated object name.
+		 * a generated object name. The replication slot has a different rule.
+		 * The subscription name is assigned to the replication slot name if no
+		 * replication slot is specified. It follows the same rule as CREATE
+		 * SUBSCRIPTION.
 		 */
 		if (num_pubs == 0 || num_subs == 0 || num_replslots == 0)
 			genname = generate_object_name(conn);
@@ -733,7 +740,7 @@ setup_publisher(struct LogicalRepInfo *dbinfo)
 		if (num_subs == 0)
 			dbinfo[i].subname = pg_strdup(genname);
 		if (num_replslots == 0)
-			dbinfo[i].replslotname = pg_strdup(genname);
+			dbinfo[i].replslotname = pg_strdup(dbinfo[i].subname);
 
 		/*
 		 * Create publication on publisher. This step should be executed
@@ -853,7 +860,7 @@ check_publisher(struct LogicalRepInfo *dbinfo)
 		disconnect_database(conn, true);
 	}
 
-	wal_level = strdup(PQgetvalue(res, 0, 0));
+	wal_level = pg_strdup(PQgetvalue(res, 0, 0));
 	max_repslots = atoi(PQgetvalue(res, 0, 1));
 	cur_repslots = atoi(PQgetvalue(res, 0, 2));
 	max_walsenders = atoi(PQgetvalue(res, 0, 3));
@@ -1124,7 +1131,7 @@ setup_subscriber(struct LogicalRepInfo *dbinfo, const char *consistent_lsn)
  * Write the required recovery parameters.
  */
 static void
-setup_recovery(struct LogicalRepInfo *dbinfo, char *datadir, char *lsn)
+setup_recovery(struct LogicalRepInfo *dbinfo, const char *datadir, const char *lsn)
 {
 	PGconn	   *conn;
 	PQExpBuffer recoveryconfcontents;
@@ -1184,7 +1191,7 @@ setup_recovery(struct LogicalRepInfo *dbinfo, char *datadir, char *lsn)
  * eventually drops this replication slot later.
  */
 static void
-drop_primary_replication_slot(struct LogicalRepInfo *dbinfo, char *slotname)
+drop_primary_replication_slot(struct LogicalRepInfo *dbinfo, const char *slotname)
 {
 	PGconn	   *conn;
 
@@ -1737,10 +1744,6 @@ main(int argc, char **argv)
 {
 	static struct option long_options[] =
 	{
-		{"config-file", required_argument, NULL, 1},
-		{"publication", required_argument, NULL, 2},
-		{"replication-slot", required_argument, NULL, 3},
-		{"subscription", required_argument, NULL, 4},
 		{"database", required_argument, NULL, 'd'},
 		{"pgdata", required_argument, NULL, 'D'},
 		{"dry-run", no_argument, NULL, 'n'},
@@ -1752,6 +1755,10 @@ main(int argc, char **argv)
 		{"verbose", no_argument, NULL, 'v'},
 		{"version", no_argument, NULL, 'V'},
 		{"help", no_argument, NULL, '?'},
+		{"config-file", required_argument, NULL, 1},
+		{"publication", required_argument, NULL, 2},
+		{"replication-slot", required_argument, NULL, 3},
+		{"subscription", required_argument, NULL, 4},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -1797,7 +1804,7 @@ main(int argc, char **argv)
 	opt.config_file = NULL;
 	opt.pub_conninfo_str = NULL;
 	opt.socket_dir = NULL;
-	opt.sub_port = palloc(16);
+	opt.sub_port = pg_malloc(16);
 	strcpy(opt.sub_port, DEFAULT_SUB_PORT);
 	opt.sub_username = NULL;
 	opt.database_names = (SimpleStringList)
@@ -1847,7 +1854,6 @@ main(int argc, char **argv)
 				dry_run = true;
 				break;
 			case 'p':
-				pg_free(opt.sub_port);
 				opt.sub_port = pg_strdup(optarg);
 				break;
 			case 'P':
