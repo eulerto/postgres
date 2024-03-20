@@ -385,10 +385,8 @@ PostgreSQL documentation
    <step>
     <para>
      Start the target server with the specified command-line options. If the
-     target server is already running, stop it because some parameters can only
-     be set at server start. If the target server was started with some
-     <command>postgres</command> command-line options, it will not be used
-     by <application>pg_createsubscriber</application>.
+     target server is running, <application>pg_createsubscriber</application>
+     will terminate with an error.
     </para>
    </step>
 

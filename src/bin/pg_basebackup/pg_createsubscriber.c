@@ -2000,15 +2000,16 @@ main(int argc, char **argv)
 	snprintf(pidfile, MAXPGPATH, "%s/postmaster.pid", subscriber_dir);
 
 	/*
-	 * If the standby server is running, stop it. Some parameters (that can
-	 * only be set at server start) are informed by command-line options.
+	 * The standby server must not be running. If the server is started under
+	 * service manager and pg_createsubscriber stops it, the service manager
+	 * might react to this action and start the server again. Therefore, refuse
+	 * to proceed if the server is running to avoid possible failures.
 	 */
 	if (stat(pidfile, &statbuf) == 0)
 	{
-
-		pg_log_info("standby is up and running");
-		pg_log_info("stopping the server to start the transformation steps");
-		stop_standby_server(subscriber_dir);
+		pg_log_error("standby is up and running");
+		pg_log_error_hint("Stop the standby and try again.");
+		exit(1);
 	}
 
 	/*
@@ -2078,15 +2079,6 @@ main(int argc, char **argv)
 
 	/* Change system identifier from subscriber */
 	modify_subscriber_sysid(&opt);
-
-	/*
-	 * In dry run mode, the server is restarted with the provided command-line
-	 * options so validation can be applied in the target server. In order to
-	 * preserve the initial state of the server (running), start it without
-	 * the command-line options.
-	 */
-	if (dry_run)
-		start_standby_server(&opt, false);
 
 	success = true;
 

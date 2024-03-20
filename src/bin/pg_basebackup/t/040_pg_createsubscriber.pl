@@ -97,7 +97,6 @@ $node_p->start;
 # we can test if the target cluster is a copy of the source cluster.
 my $node_f = PostgreSQL::Test::Cluster->new('node_f');
 $node_f->init(force_initdb => 1, allows_streaming => 'logical');
-$node_f->start;
 
 # On node P
 # - create databases
@@ -146,7 +145,6 @@ my $node_c = PostgreSQL::Test::Cluster->new('node_c');
 $node_c->init_from_backup($node_s, 'backup_2', has_streaming => 1);
 $node_c->adjust_conf('postgresql.conf', 'primary_slot_name', undef);
 $node_c->set_standby_mode();
-$node_c->start;
 
 # Run pg_createsubscriber on node C (P -> S -> C)
 command_fails(
@@ -174,6 +172,7 @@ max_wal_senders = 1
 max_worker_processes = 2
 });
 $node_p->restart;
+$node_s->stop;
 command_fails(
 	[
 		'pg_createsubscriber', '--verbose',
@@ -201,7 +200,6 @@ max_replication_slots = 1
 max_logical_replication_workers = 1
 max_worker_processes = 2
 });
-$node_s->restart;
 command_fails(
 	[
 		'pg_createsubscriber', '--verbose',
@@ -220,7 +218,6 @@ max_logical_replication_workers = 4
 max_worker_processes = 8
 });
 # Restore default settings on both servers
-$node_s->restart;
 $node_p->restart;
 
 # dry run mode on node S
@@ -242,8 +239,10 @@ command_ok(
 	'run pg_createsubscriber --dry-run on node S');
 
 # Check if node S is still a standby
+$node_s->start;
 is($node_s->safe_psql('postgres', 'SELECT pg_catalog.pg_is_in_recovery()'),
 	't', 'standby is in recovery');
+$node_s->stop;
 
 # pg_createsubscriber can run without --databases option
 command_ok(
@@ -284,9 +283,7 @@ is($result, qq(0),
 $node_p->safe_psql('pg1', "INSERT INTO tbl1 VALUES('third row')");
 $node_p->safe_psql('pg2', "INSERT INTO tbl2 VALUES('row 1')");
 
-# PID sets to undefined because subscriber was stopped behind the scenes.
 # Start subscriber
-$node_s->{_pid} = undef;
 $node_s->start;
 
 # Get subscription names
