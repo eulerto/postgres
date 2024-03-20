@@ -959,7 +959,6 @@ check_subscriber(const struct LogicalRepInfo *dbinfo)
 {
 	PGconn	   *conn;
 	PGresult   *res;
-	PQExpBuffer str = createPQExpBuffer();
 	bool		failed = false;
 
 	int			max_lrworkers;
@@ -976,50 +975,6 @@ check_subscriber(const struct LogicalRepInfo *dbinfo)
 		pg_log_error("target server must be a standby");
 		disconnect_database(conn, true);
 	}
-
-	/*
-	 * Subscriptions can only be created by roles that have the privileges of
-	 * pg_create_subscription role and CREATE privileges on the specified
-	 * database.
-	 */
-	appendPQExpBuffer(str,
-					  "SELECT pg_catalog.pg_has_role(current_user, %u, 'MEMBER'), "
-					  "pg_catalog.has_database_privilege(current_user, '%s', 'CREATE'), "
-					  "pg_catalog.has_function_privilege(current_user, 'pg_catalog.pg_replication_origin_advance(text, pg_lsn)', 'EXECUTE')",
-					  ROLE_PG_CREATE_SUBSCRIPTION, dbinfo[0].dbname);
-
-	pg_log_debug("command is: %s", str->data);
-
-	res = PQexec(conn, str->data);
-
-	if (PQresultStatus(res) != PGRES_TUPLES_OK)
-	{
-		pg_log_error("could not obtain access privilege information: %s",
-					 PQresultErrorMessage(res));
-		disconnect_database(conn, true);
-	}
-
-	if (strcmp(PQgetvalue(res, 0, 0), "t") != 0)
-	{
-		pg_log_error("permission denied to create subscription");
-		pg_log_error_hint("Only roles with privileges of the \"%s\" role may create subscriptions.",
-						  "pg_create_subscription");
-		failed = true;
-	}
-	if (strcmp(PQgetvalue(res, 0, 1), "t") != 0)
-	{
-		pg_log_error("permission denied for database %s", dbinfo[0].dbname);
-		failed = true;
-	}
-	if (strcmp(PQgetvalue(res, 0, 2), "t") != 0)
-	{
-		pg_log_error("permission denied for function \"%s\"",
-					 "pg_catalog.pg_replication_origin_advance(text, pg_lsn)");
-		failed = true;
-	}
-
-	destroyPQExpBuffer(str);
-	PQclear(res);
 
 	/*------------------------------------------------------------------------
 	 * Logical replication requires a few parameters to be set on subscriber.
