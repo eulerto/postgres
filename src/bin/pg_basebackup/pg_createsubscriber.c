@@ -160,9 +160,9 @@ cleanup_objects_atexit(void)
 	 */
 	if (recovery_ended)
 	{
-		pg_log_warning("pg_createsubscriber failed after the end of recovery");
-		pg_log_warning_hint("The target server cannot be used as a physical replica anymore.");
-		pg_log_warning_hint("You must recreate the physical replica before continuing.");
+		pg_log_warning("failed after the end of recovery");
+		pg_log_warning_hint("The target server cannot be used as a physical replica anymore.  "
+							"You must recreate the physical replica before continuing.");
 	}
 
 	for (int i = 0; i < num_dbs; i++)
@@ -189,13 +189,13 @@ cleanup_objects_atexit(void)
 				 */
 				if (dbinfo[i].made_publication)
 				{
-					pg_log_warning("There might be a publication \"%s\" in database \"%s\" on primary",
+					pg_log_warning("publication \"%s\" in database \"%s\" on primary might be left behind",
 								   dbinfo[i].pubname, dbinfo[i].dbname);
 					pg_log_warning_hint("Consider dropping this publication before trying again.");
 				}
 				if (dbinfo[i].made_replslot)
 				{
-					pg_log_warning("There might be a replication slot \"%s\" in database \"%s\" on primary",
+					pg_log_warning("replication slot \"%s\" in database \"%s\" on primary might be left behind",
 								   dbinfo[i].replslotname, dbinfo[i].dbname);
 					pg_log_warning_hint("Drop this replication slot soon to avoid retention of WAL files.");
 				}
@@ -426,7 +426,7 @@ store_pub_sub_info(const struct CreateSubscriberOptions *opt,
 	SimpleStringListCell *replslotcell = NULL;
 	int			i = 0;
 
-	dbinfo = (struct LogicalRepInfo *) pg_malloc(num_dbs * sizeof(struct LogicalRepInfo));
+	dbinfo = pg_malloc_array(struct LogicalRepInfo, num_dbs);
 
 	if (num_pubs > 0)
 		pubcell = opt->pub_names.head;
@@ -617,7 +617,7 @@ modify_subscriber_sysid(const struct CreateSubscriberOptions *opt)
 
 	char	   *cmd_str;
 
-	pg_log_info("modifying system identifier from subscriber");
+	pg_log_info("modifying system identifier of subscriber");
 
 	cf = get_controlfile(subscriber_dir, &crc_ok);
 	if (!crc_ok)
@@ -973,7 +973,7 @@ check_subscriber(const struct LogicalRepInfo *dbinfo)
 	/* The target server must be a standby */
 	if (!server_is_in_recovery(conn))
 	{
-		pg_log_error("The target server must be a standby");
+		pg_log_error("target server must be a standby");
 		disconnect_database(conn, true);
 	}
 
@@ -1225,12 +1225,10 @@ create_logical_replication_slot(PGconn *conn, struct LogicalRepInfo *dbinfo)
 {
 	PQExpBuffer str = createPQExpBuffer();
 	PGresult   *res = NULL;
-	char		slot_name[NAMEDATALEN];
+	const char *slot_name = dbinfo->replslotname;
 	char	   *lsn = NULL;
 
 	Assert(conn != NULL);
-
-	snprintf(slot_name, NAMEDATALEN, "%s", dbinfo->replslotname);
 
 	pg_log_info("creating the replication slot \"%s\" on database \"%s\"",
 				slot_name, dbinfo->dbname);
@@ -1459,8 +1457,7 @@ wait_for_end_recovery(const char *conninfo, const struct CreateSubscriberOptions
 		pg_fatal("server did not end recovery");
 
 	pg_log_info("target server reached the consistent state");
-	pg_log_info_hint("If pg_createsubscriber fails after this point, "
-					 "you must recreate the physical replica before continuing.");
+	pg_log_info_hint("If pg_createsubscriber fails after this point, you must recreate the physical replica before continuing.");
 }
 
 /*
@@ -1633,8 +1630,8 @@ set_replication_progress(PGconn *conn, const struct LogicalRepInfo *dbinfo, cons
 	PQExpBuffer str = createPQExpBuffer();
 	PGresult   *res;
 	Oid			suboid;
-	char		originname[NAMEDATALEN];
-	char		lsnstr[17 + 1]; /* MAXPG_LSNLEN = 17 */
+	char	   *originname;
+	char	   *lsnstr;
 
 	Assert(conn != NULL);
 
@@ -1661,13 +1658,12 @@ set_replication_progress(PGconn *conn, const struct LogicalRepInfo *dbinfo, cons
 	if (dry_run)
 	{
 		suboid = InvalidOid;
-		snprintf(lsnstr, sizeof(lsnstr), "%X/%X",
-				 LSN_FORMAT_ARGS((XLogRecPtr) InvalidXLogRecPtr));
+		lsnstr = psprintf("%X/%X", LSN_FORMAT_ARGS((XLogRecPtr) InvalidXLogRecPtr));
 	}
 	else
 	{
 		suboid = strtoul(PQgetvalue(res, 0, 0), NULL, 10);
-		snprintf(lsnstr, sizeof(lsnstr), "%s", lsn);
+		lsnstr = psprintf("%s", lsn);
 	}
 
 	PQclear(res);
@@ -1676,7 +1672,7 @@ set_replication_progress(PGconn *conn, const struct LogicalRepInfo *dbinfo, cons
 	 * The origin name is defined as pg_%u. %u is the subscription OID. See
 	 * ApplyWorkerMain().
 	 */
-	snprintf(originname, sizeof(originname), "pg_%u", suboid);
+	originname = psprintf("pg_%u", suboid);
 
 	pg_log_info("setting the replication progress (node name \"%s\" ; LSN %s) on database \"%s\"",
 				originname, lsnstr, dbinfo->dbname);
@@ -1700,6 +1696,8 @@ set_replication_progress(PGconn *conn, const struct LogicalRepInfo *dbinfo, cons
 		PQclear(res);
 	}
 
+	pg_free(originname);
+	pg_free(lsnstr);
 	destroyPQExpBuffer(str);
 }
 
@@ -1805,13 +1803,9 @@ main(int argc, char **argv)
 	opt.config_file = NULL;
 	opt.pub_conninfo_str = NULL;
 	opt.socket_dir = NULL;
-	opt.sub_port = palloc(16);
-	strcpy(opt.sub_port, DEFAULT_SUB_PORT);
+	opt.sub_port = DEFAULT_SUB_PORT;
 	opt.sub_username = NULL;
-	opt.database_names = (SimpleStringList)
-	{
-		NULL, NULL
-	};
+	opt.database_names = (SimpleStringList){0};
 	opt.recovery_timeout = 0;
 
 	/*
