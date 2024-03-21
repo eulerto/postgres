@@ -1423,14 +1423,19 @@ create_publication(PGconn *conn, struct LogicalRepInfo *dbinfo)
 {
 	PQExpBuffer str = createPQExpBuffer();
 	PGresult   *res;
+	char	   *ipubname;
+	char	   *spubname;
 
 	Assert(conn != NULL);
+
+	ipubname = PQescapeIdentifier(conn, dbinfo->pubname, strlen(dbinfo->pubname));
+	spubname = PQescapeLiteral(conn, dbinfo->pubname, strlen(dbinfo->pubname));
 
 	/* Check if the publication already exists */
 	appendPQExpBuffer(str,
 					  "SELECT 1 FROM pg_catalog.pg_publication "
-					  "WHERE pubname = '%s'",
-					  dbinfo->pubname);
+					  "WHERE pubname = %s",
+					  spubname);
 	res = PQexec(conn, str->data);
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
@@ -1460,7 +1465,7 @@ create_publication(PGconn *conn, struct LogicalRepInfo *dbinfo)
 				dbinfo->pubname, dbinfo->dbname);
 
 	appendPQExpBuffer(str, "CREATE PUBLICATION %s FOR ALL TABLES",
-					  dbinfo->pubname);
+					  ipubname);
 
 	pg_log_debug("command is: %s", str->data);
 
@@ -1479,6 +1484,8 @@ create_publication(PGconn *conn, struct LogicalRepInfo *dbinfo)
 	/* For cleanup purposes */
 	dbinfo->made_publication = true;
 
+	pg_free(ipubname);
+	pg_free(spubname);
 	destroyPQExpBuffer(str);
 }
 
@@ -1490,13 +1497,16 @@ drop_publication(PGconn *conn, struct LogicalRepInfo *dbinfo)
 {
 	PQExpBuffer str = createPQExpBuffer();
 	PGresult   *res;
+	char	   *pubname;
 
 	Assert(conn != NULL);
+
+	pubname = PQescapeIdentifier(conn, dbinfo->pubname, strlen(dbinfo->pubname));
 
 	pg_log_info("dropping publication \"%s\" on database \"%s\"",
 				dbinfo->pubname, dbinfo->dbname);
 
-	appendPQExpBuffer(str, "DROP PUBLICATION %s", dbinfo->pubname);
+	appendPQExpBuffer(str, "DROP PUBLICATION %s", pubname);
 
 	pg_log_debug("command is: %s", str->data);
 
@@ -1520,6 +1530,7 @@ drop_publication(PGconn *conn, struct LogicalRepInfo *dbinfo)
 		PQclear(res);
 	}
 
+	pg_free(pubname);
 	destroyPQExpBuffer(str);
 }
 
@@ -1539,8 +1550,13 @@ create_subscription(PGconn *conn, const struct LogicalRepInfo *dbinfo)
 {
 	PQExpBuffer str = createPQExpBuffer();
 	PGresult   *res;
+	char	   *pubname;
+	char	   *subname;
 
 	Assert(conn != NULL);
+
+	pubname = PQescapeIdentifier(conn, dbinfo->pubname, strlen(dbinfo->pubname));
+	subname = PQescapeIdentifier(conn, dbinfo->subname, strlen(dbinfo->subname));
 
 	pg_log_info("creating subscription \"%s\" on database \"%s\"",
 				dbinfo->subname, dbinfo->dbname);
@@ -1549,7 +1565,7 @@ create_subscription(PGconn *conn, const struct LogicalRepInfo *dbinfo)
 					  "CREATE SUBSCRIPTION %s CONNECTION '%s' PUBLICATION %s "
 					  "WITH (create_slot = false, enabled = false, "
 					  "slot_name = '%s', copy_data = false)",
-					  dbinfo->subname, dbinfo->pubconninfo, dbinfo->pubname,
+					  subname, dbinfo->pubconninfo, pubname,
 					  dbinfo->replslotname);
 
 	pg_log_debug("command is: %s", str->data);
@@ -1566,6 +1582,8 @@ create_subscription(PGconn *conn, const struct LogicalRepInfo *dbinfo)
 		PQclear(res);
 	}
 
+	pg_free(pubname);
+	pg_free(subname);
 	destroyPQExpBuffer(str);
 }
 
@@ -1585,15 +1603,18 @@ set_replication_progress(PGconn *conn, const struct LogicalRepInfo *dbinfo, cons
 	PQExpBuffer str = createPQExpBuffer();
 	PGresult   *res;
 	Oid			suboid;
+	char	   *subname;
 	char	   *originname;
 	char	   *lsnstr;
 
 	Assert(conn != NULL);
 
+	subname = PQescapeLiteral(conn, dbinfo->subname, strlen(dbinfo->subname));
+
 	appendPQExpBuffer(str,
 					  "SELECT oid FROM pg_catalog.pg_subscription "
-					  "WHERE subname = '%s'",
-					  dbinfo->subname);
+					  "WHERE subname = %s",
+					  subname);
 
 	res = PQexec(conn, str->data);
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
@@ -1651,6 +1672,7 @@ set_replication_progress(PGconn *conn, const struct LogicalRepInfo *dbinfo, cons
 		PQclear(res);
 	}
 
+	pg_free(subname);
 	pg_free(originname);
 	pg_free(lsnstr);
 	destroyPQExpBuffer(str);
@@ -1667,13 +1689,16 @@ enable_subscription(PGconn *conn, const struct LogicalRepInfo *dbinfo)
 {
 	PQExpBuffer str = createPQExpBuffer();
 	PGresult   *res;
+	char	   *subname;
 
 	Assert(conn != NULL);
+
+	subname = PQescapeIdentifier(conn, dbinfo->subname, strlen(dbinfo->subname));
 
 	pg_log_info("enabling subscription \"%s\" on database \"%s\"",
 				dbinfo->subname, dbinfo->dbname);
 
-	appendPQExpBuffer(str, "ALTER SUBSCRIPTION %s ENABLE", dbinfo->subname);
+	appendPQExpBuffer(str, "ALTER SUBSCRIPTION %s ENABLE", subname);
 
 	pg_log_debug("command is: %s", str->data);
 
@@ -1690,6 +1715,7 @@ enable_subscription(PGconn *conn, const struct LogicalRepInfo *dbinfo)
 		PQclear(res);
 	}
 
+	pg_free(subname);
 	destroyPQExpBuffer(str);
 }
 

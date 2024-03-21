@@ -266,6 +266,10 @@ command_ok(
 		$node_p->connstr('pg1'),
 		'--socket-directory', $node_s->host,
 		'--subscriber-port', $node_s->port,
+		'--publication', 'pub1',
+		'--publication', 'Pub2',
+		'--replication-slot', 'replslot1',
+		'--replication-slot', 'replslot2',
 		'--database', 'pg1',
 		'--database', 'pg2'
 	],
