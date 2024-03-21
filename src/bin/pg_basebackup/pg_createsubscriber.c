@@ -1109,7 +1109,7 @@ setup_recovery(const struct LogicalRepInfo *dbinfo, const char *datadir, const c
 	 * state is reached (recovery_target) and failure due to multiple recovery
 	 * targets (name, time, xid, LSN).
 	 */
-	recoveryconfcontents = GenerateRecoveryConfig(conn, NULL);
+	recoveryconfcontents = GenerateRecoveryConfig(conn, NULL, NULL);
 	appendPQExpBuffer(recoveryconfcontents, "recovery_target = ''\n");
 	appendPQExpBuffer(recoveryconfcontents,
 					  "recovery_target_timeline = 'latest'\n");
