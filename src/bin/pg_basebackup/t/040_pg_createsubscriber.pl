@@ -126,6 +126,42 @@ primary_slot_name = '$slotname'
 $node_s->set_standby_mode();
 $node_s->start;
 
+# Set up node T as standby linking to node P then promote it
+my $node_t = PostgreSQL::Test::Cluster->new('node_t');
+$node_t->init_from_backup($node_p, 'backup_1', has_streaming => 1);
+$node_t->set_standby_mode();
+$node_t->start;
+$node_t->promote;
+$node_t->stop;
+
+# Run pg_createsubscriber on a promoted server
+command_fails(
+	[
+		'pg_createsubscriber', '--verbose',
+		'--dry-run', '--pgdata',
+		$node_t->data_dir, '--publisher-server',
+		$node_p->connstr('pg1'),
+		'--socket-directory', $node_t->host,
+		'--subscriber-port', $node_t->port,
+		'--database', 'pg1',
+		'--database', 'pg2'
+	],
+	'target server is not in recovery');
+
+# Run pg_createsubscriber when standby is running
+command_fails(
+	[
+		'pg_createsubscriber', '--verbose',
+		'--dry-run', '--pgdata',
+		$node_s->data_dir, '--publisher-server',
+		$node_p->connstr('pg1'),
+		'--socket-directory', $node_s->host,
+		'--subscriber-port', $node_s->port,
+		'--database', 'pg1',
+		'--database', 'pg2'
+	],
+	'standby is up and running');
+
 # Run pg_createsubscriber on about-to-fail node F
 command_fails(
 	[
@@ -322,6 +358,7 @@ ok($sysid_p != $sysid_s, 'system identifier was changed');
 # clean up
 $node_p->teardown_node;
 $node_s->teardown_node;
+$node_t->teardown_node;
 $node_f->teardown_node;
 
 done_testing();
