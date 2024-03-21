@@ -1604,17 +1604,20 @@ set_replication_progress(PGconn *conn, const struct LogicalRepInfo *dbinfo, cons
 	PGresult   *res;
 	Oid			suboid;
 	char	   *subname;
+	char	   *dbname;
 	char	   *originname;
 	char	   *lsnstr;
 
 	Assert(conn != NULL);
 
 	subname = PQescapeLiteral(conn, dbinfo->subname, strlen(dbinfo->subname));
+	dbname = PQescapeLiteral(conn, dbinfo->dbname, strlen(dbinfo->dbname));
 
 	appendPQExpBuffer(str,
-					  "SELECT oid FROM pg_catalog.pg_subscription "
-					  "WHERE subname = %s",
-					  subname);
+					  "SELECT s.oid FROM pg_catalog.pg_subscription s "
+					  "INNER JOIN pg_catalog.pg_database d ON (s.subdbid = d.oid) "
+					  "WHERE s.subname = %s AND d.datname = %s",
+					  subname, dbname);
 
 	res = PQexec(conn, str->data);
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
@@ -1673,6 +1676,7 @@ set_replication_progress(PGconn *conn, const struct LogicalRepInfo *dbinfo, cons
 	}
 
 	pg_free(subname);
+	pg_free(dbname);
 	pg_free(originname);
 	pg_free(lsnstr);
 	destroyPQExpBuffer(str);
