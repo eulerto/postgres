@@ -75,6 +75,10 @@ static uint64 get_primary_sysid(const char *conninfo);
 static uint64 get_standby_sysid(const char *datadir);
 static void modify_subscriber_sysid(const struct CreateSubscriberOptions *opt);
 static bool server_is_in_recovery(PGconn *conn);
+static char *publication_name_format(PGconn *conn, const char *format);
+static char *replication_slot_name_format(PGconn *conn, const char *format);
+static char *subscription_name_format(PGconn *conn, const char *format);
+static char *object_name_format(PGconn *conn, const char *format, char type);
 static char *generate_object_name(PGconn *conn);
 static bool check_publisher(const struct LogicalRepInfo *dbinfo);
 static char *setup_publisher(struct LogicalRepInfo *dbinfo);
@@ -657,6 +661,100 @@ modify_subscriber_sysid(const struct CreateSubscriberOptions *opt)
 	}
 
 	pg_free(cf);
+}
+
+static char *
+publication_name_format(PGconn *conn, const char *format)
+{
+	return object_name_format(conn, format, 'p');
+}
+
+static char *
+replication_slot_name_format(PGconn *conn, const char *format)
+{
+	return object_name_format(conn, format, 'r');
+}
+
+static char *
+subscription_name_format(PGconn *conn, const char *format)
+{
+	return object_name_format(conn, format, 's');
+}
+
+static char *
+object_name_format(PGconn *conn, const char *format, char type)
+{
+	PQExpBuffer buf = createPQExpBuffer();
+	const char *p;
+	char	   *objname = NULL;
+	bool		success = true;
+
+	/* XXX format can be NULL? */
+	if (format == NULL)
+	{
+		pg_log_error("invalid format specifier");
+		return NULL;
+	}
+
+	for (p = format; *p != '\0'; p++)
+	{
+		if (*p != '%')
+		{
+			appendPQExpBufferChar(buf, *p);
+			continue;
+		}
+
+		/* it is '%', skip to the next char */
+		p++;
+		if (*p == '\0')
+		{
+			/* no format specifier */
+			pg_log_error("invalid format specifier");
+			success = false;
+			break;
+		}
+		else if (*p == '%')
+		{
+			/* escape %, print it */
+			appendPQExpBufferChar(buf, '%');
+		}
+
+		/* process the format specifier */
+		switch (*p)
+		{
+			case 'd':
+				appendPQExpBufferStr(buf, dbinfo->dbname);
+				break;
+			case 'p':
+				if (type != 'p')
+					appendPQExpBufferStr(buf, dbinfo->pubname);
+				else
+				{
+					pg_log_error("format specifier %%p cannot be used in publication names");
+					success = false;
+				}
+				break;
+			case 's':
+				if (type != 's')
+					appendPQExpBufferStr(buf, dbinfo->subname);
+				else
+				{
+					pg_log_error("format specifier %%s cannot be used in subscription names");
+					success = false;
+				}
+				break;
+			default:
+				pg_log_error("invalid format specifier");
+				success = false;
+				break;
+		}
+	}
+
+	if (success)
+		objname = pg_strdup(buf->data);
+	destroyPQExpBuffer(buf);
+
+	return objname;
 }
 
 /*
