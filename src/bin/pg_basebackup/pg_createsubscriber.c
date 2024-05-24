@@ -76,9 +76,9 @@ static uint64 get_standby_sysid(const char *datadir);
 static void modify_subscriber_sysid(const struct CreateSubscriberOptions *opt);
 static bool server_is_in_recovery(PGconn *conn);
 static char *generate_object_name(PGconn *conn);
-static void check_publisher(const struct LogicalRepInfo *dbinfo);
+static bool check_publisher(const struct LogicalRepInfo *dbinfo);
 static char *setup_publisher(struct LogicalRepInfo *dbinfo);
-static void check_subscriber(const struct LogicalRepInfo *dbinfo);
+static bool check_subscriber(const struct LogicalRepInfo *dbinfo);
 static void setup_subscriber(struct LogicalRepInfo *dbinfo,
 							 const char *consistent_lsn);
 static void setup_recovery(const struct LogicalRepInfo *dbinfo, const char *datadir,
@@ -803,7 +803,7 @@ server_is_in_recovery(PGconn *conn)
  *
  * XXX Does it not allow a synchronous replica?
  */
-static void
+static bool
 check_publisher(const struct LogicalRepInfo *dbinfo)
 {
 	PGconn	   *conn;
@@ -908,8 +908,7 @@ check_publisher(const struct LogicalRepInfo *dbinfo)
 
 	pg_free(wal_level);
 
-	if (failed)
-		exit(1);
+	return failed;
 }
 
 /*
@@ -923,7 +922,7 @@ check_publisher(const struct LogicalRepInfo *dbinfo)
  * there is not a reliable way to provide a suitable error saying the server C
  * will be broken at the end of this process (due to pg_resetwal).
  */
-static void
+static bool
 check_subscriber(const struct LogicalRepInfo *dbinfo)
 {
 	PGconn	   *conn;
@@ -1014,8 +1013,7 @@ check_subscriber(const struct LogicalRepInfo *dbinfo)
 		failed = true;
 	}
 
-	if (failed)
-		exit(1);
+	return failed;
 }
 
 /*
@@ -1771,6 +1769,9 @@ main(int argc, char **argv)
 
 	char		pidfile[MAXPGPATH];
 
+	bool		pub_failed = false;
+	bool		sub_failed = false;
+
 	pg_logging_init(argv[0]);
 	pg_logging_set_level(PG_LOG_WARNING);
 	progname = get_progname(argv[0]);
@@ -2062,10 +2063,13 @@ main(int argc, char **argv)
 	start_standby_server(&opt, true);
 
 	/* Check if the standby server is ready for logical replication */
-	check_subscriber(dbinfo);
+	sub_failed = check_subscriber(dbinfo);
 
 	/* Check if the primary server is ready for logical replication */
-	check_publisher(dbinfo);
+	pub_failed = check_publisher(dbinfo);
+
+	if (pub_failed || sub_failed)
+		exit(1);
 
 	/*
 	 * Stop the target server. The recovery process requires that the server
