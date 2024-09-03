@@ -380,6 +380,9 @@
 
 # These settings are ignored on a publisher.
 
+#max_active_replication_origins = -1	# maximum number of active replication origins
+					# -1 to use max_replication_slots
+					# (change requires restart)
 #max_logical_replication_workers = 4	# taken from max_worker_processes
 					# (change requires restart)
 #max_sync_workers_per_subscription = 2	# taken from max_logical_replication_workers
