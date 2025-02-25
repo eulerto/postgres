@@ -521,7 +521,6 @@ static bool default_with_oids = false;
 bool		current_role_is_superuser;
 
 int			log_min_error_statement = ERROR;
-char	   *log_min_messages_string = NULL;
 int		   *log_min_messages = NULL;
 int			client_min_messages = NOTICE;
 int			log_min_duration_sample = -1;
@@ -580,6 +579,7 @@ static char *server_version_string;
 static int	server_version_num;
 static char *debug_io_direct_string;
 static char *restrict_nonsystem_relation_kind_string;
+static char *log_min_messages_string;
 
 #ifdef HAVE_SYSLOG
 #define	DEFAULT_SYSLOG_FACILITY LOG_LOCAL0
