@@ -3321,7 +3321,7 @@ struct config_int ConfigureNamesInt[] =
 			NULL
 		},
 		&max_active_replication_origins,
-		-1, -1, MAX_BACKENDS,
+		10, 0, MAX_BACKENDS,
 		NULL, NULL, NULL
 	},
 

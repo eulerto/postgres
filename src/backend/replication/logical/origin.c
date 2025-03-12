@@ -101,7 +101,7 @@
 #define PG_REPLORIGIN_CHECKPOINT_TMPFILE PG_REPLORIGIN_CHECKPOINT_FILENAME ".tmp"
 
 /* GUC variables */
-int			max_active_replication_origins = -1;
+int			max_active_replication_origins = 10;
 
 /*
  * Replay progress of a single remote node.
@@ -514,32 +514,6 @@ ReplicationOriginShmemSize(void)
 
 	if (max_active_replication_origins == 0)
 		return size;
-
-	/*
-	 * Prior to PostgreSQL 18, max_replication_slots was used to set the
-	 * number of replication origins. For backward compatibility, -1 indicates
-	 * to use the fallback value (max_replication_slots).
-	 */
-	if (max_active_replication_origins == -1)
-	{
-		char		buf[32];
-
-		snprintf(buf, sizeof(buf), "%d", max_replication_slots);
-		SetConfigOption("max_active_replication_origins", buf,
-						PGC_POSTMASTER, PGC_S_DYNAMIC_DEFAULT);
-
-		/*
-		 * We prefer to report this value's source as PGC_S_DYNAMIC_DEFAULT.
-		 * However, if the DBA explicitly set max_active_replication_origins
-		 * equals to -1 in the config file, then PGC_S_DYNAMIC_DEFAULT will
-		 * fail to override that and we must force the matter with
-		 * PGC_S_OVERRIDE.
-		 */
-		if (max_active_replication_origins == -1)	/* failed to apply it? */
-			SetConfigOption("max_active_replication_origins", buf,
-							PGC_POSTMASTER, PGC_S_OVERRIDE);
-	}
-	Assert(max_active_replication_origins != -1);
 
 	size = add_size(size, offsetof(ReplicationStateCtl, states));
 

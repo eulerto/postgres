@@ -5136,9 +5136,8 @@ ANY <replaceable class="parameter">num_sync</replaceable> ( <replaceable class="
         be created on the server. Setting it to a lower value than the current
         number of tracked replication origins (reflected in
         <link linkend="view-pg-replication-origin-status">pg_replication_origin_status</link>)
-        will prevent the server from starting. It defaults to -1, indicating
-        that the value of <xref linkend="guc-max-replication-slots"/> should be
-        used instead. This parameter can only be set at server start.
+        will prevent the server from starting. It defaults to 10. This parameter
+        can only be set at server start.
 
         <literal>max_active_replication_origins</literal> must be set to at least the
         number of subscriptions that will be added to the subscriber, plus some
