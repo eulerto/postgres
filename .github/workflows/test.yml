@@ -1,0 +1,86 @@
+name: Linux - Ubuntu - autoconf
+
+on:
+  push:
+    branches:
+      - 'dev/**'
+
+  workflow_dispatch:
+
+env:
+  BUILD_JOBS: 4
+  TEST_JOBS: 8
+  CHECK: check-world PROVE_FLAGS=--timer
+  CHECKFLAGS: -Otarget
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v4
+        with:
+          repository: postgres/postgres
+          ref: ${{ github.ref_name }}
+          token: ${{ env.GH_SLONIK }}
+          path: src
+
+      - name: System information
+        run: |
+          id
+          uname -a
+          cat /proc/cmdline
+          ulimit -a -H && ulimit -a -S
+          export
+
+      - name: Create user
+        run: |
+          useradd -m postgres
+          chown -R postgres:postgres .
+          echo '* - memlock 134217728' > /etc/security/limits.d/postgres.conf
+          su postgres -c "ulimit -l -H && ulimit -l -S"
+
+      - name: Install build dependencies
+        run: |
+          apt-get update
+          apt-get install -y build-essential libreadline-dev zlib1g-dev
+
+      - name: Configure
+        run: |
+          su postgres <<-EOF
+            ./configure \
+              --enable-cassert --enable-injection-points --enable-debug \
+              --enable-tap-tests --enable-nls \
+              --with-segsize-blocks=6 \
+              --with-libnuma \
+              --with-liburing \
+              --with-gssapi \
+              --with-icu \
+              --with-ldap \
+              --with-libcurl \
+              --with-libxml \
+              --with-libxslt \
+              --with-llvm \
+              --with-lz4 \
+              --with-pam \
+              --with-perl \
+              --with-python \
+              --with-selinux \
+              --with-ssl=openssl \
+              --with-systemd \
+              --with-tcl --with-tclconfig=/usr/lib/tcl8.6/
+              --with-uuid=ossp \
+              --with-zstd \
+              CLANG="ccache clang-16"
+          EOF
+
+      - name: Build
+        run: |
+          su postgres -c "make -s -j${{ env.BUILD_JOBS }} world-bin"
+
+      - name: Run tests
+        run: |
+          su postgres <<-EOF
+            ulimit -c unlimited # default is 0
+            make -s ${{ env.CHECK }} ${{ env.CHECKFLAGS }} -j${{ env.TEST_JOBS }}
+          EOF
