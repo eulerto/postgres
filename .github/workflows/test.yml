@@ -35,7 +35,7 @@ jobs:
       - name: Populate cache
         uses: actions/cache/restore@v4
         with:
-          path: ${{ env.CACHE_DIR }}
+          path: ${{ env.CCACHE_DIR }}
           key: cache-${{ runner.os }}
 
       - name: System information
@@ -70,7 +70,7 @@ jobs:
       - name: Upload cache
         uses: actions/cache/save@v4
         with:
-          path: ${{ env.CACHE_DIR }}
+          path: ${{ env.CCACHE_DIR }}
           key: cache-${{ runner.os }}
 
       - name: Minimal Test
@@ -98,7 +98,7 @@ jobs:
       - name: Populate cache
         uses: actions/cache/restore@v4
         with:
-          path: ${{ env.CACHE_DIR }}
+          path: ${{ env.CCACHE_DIR }}
           key: cache-${{ runner.os }}
 
       - name: System information
@@ -155,7 +155,7 @@ jobs:
       - name: Upload cache
         uses: actions/cache/save@v4
         with:
-          path: ${{ env.CACHE_DIR }}
+          path: ${{ env.CCACHE_DIR }}
           key: cache-${{ runner.os }}
 
       - name: Run tests
