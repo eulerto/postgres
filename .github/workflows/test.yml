@@ -17,7 +17,7 @@ env:
   CHECKFLAGS: -Otarget
 
 jobs:
-  build-and-test:
+  linux-autoconf:
     name: Linux - Ubuntu noble - Autoconf
     runs-on: ubuntu-24.04
     env:
