@@ -68,7 +68,7 @@ jobs:
             --with-tcl --with-tclconfig=/usr/lib/tcl8.6/ \
             --with-uuid=ossp \
             --with-zstd \
-            CLANG="ccache clang-16"
+            CLANG="ccache clang"
 
       - name: Build
         run: |
