@@ -56,7 +56,7 @@ jobs:
           libsystemd-dev liburing-dev libxml2-dev libxml2-utils libxslt1-dev \
           libzstd-dev llvm-dev lz4 mawk perl pkgconf python3-dev \
           systemtap-sdt-dev tcl-dev tzdata uuid-dev xsltproc zlib1g-dev zstd \
-          libossp-uuid-dev ccache
+          libossp-uuid-dev ccache meson
 
       - name: Configure
         run: |
