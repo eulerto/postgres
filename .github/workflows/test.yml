@@ -5,7 +5,7 @@ on:
     branches:
       - 'dev/**'
 
-  workflow_dispatch:
+  workflow_dispatch: {}
 
 env:
   BUILD_JOBS: 4
@@ -22,7 +22,7 @@ jobs:
         with:
           repository: postgres/postgres
           ref: ${{ github.ref_name }}
-          token: ${{ env.GH_SLONIK }}
+          token: ${{ secrets.GH_SLONIK }}
           path: src
 
       - name: System information
