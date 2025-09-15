@@ -36,7 +36,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y autoconf bison clang flex gdb gettext \
-          libcurl4-openssl-dev libicu-dev libio-pyt-perl libipc-run-perl \
+          libcurl4-openssl-dev libicu-dev libio-pty-perl libipc-run-perl \
           libkrb5-dev libldap2-dev liblz4-dev libnuma-dev libpam0g-dev \
           libperl-dev libreadline-dev libselinux1-dev libssl-dev \
           libsystemd-dev liburing-dev libxml2-dev libxml2-utils libxslt1-dev \
