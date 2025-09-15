@@ -15,10 +15,75 @@ env:
   CCACHE_DIR: "/tmp/ccache_dir"
   CHECK: check-world PROVE_FLAGS=--timer
   CHECKFLAGS: -Otarget
+  MBUILD_TARGET: all testprep
+  MTEST_ARGS: --print-errorlogs --no-rebuild -C build
 
 jobs:
+  sanity-check:
+    name: Sanity Check
+    runs-on: ubuntu-24.04
+    env:
+      CCACHE_MAXSIZE: "150M"
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v4
+        with:
+          repository: postgres/postgres
+          ref: ${{ github.head_ref }}
+          token: ${{ secrets.GH_SLONIK }}
+
+      - name: Populate cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.CACHE_DIR }}
+          key: cache-${{ runner.os }}
+
+      - name: System information
+        run: |
+          id
+          uname -a
+          cat /proc/cmdline
+          ulimit -a -H && ulimit -a -S
+          export
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf bison clang flex gdb gettext \
+          libcurl4-openssl-dev libicu-dev libio-pty-perl libipc-run-perl \
+          libkrb5-dev libldap2-dev liblz4-dev libnuma-dev libpam0g-dev \
+          libperl-dev libreadline-dev libselinux1-dev libssl-dev \
+          libsystemd-dev liburing-dev libxml2-dev libxml2-utils libxslt1-dev \
+          libzstd-dev llvm-dev lz4 mawk perl pkgconf python3-dev \
+          systemtap-sdt-dev tcl-dev tzdata uuid-dev xsltproc zlib1g-dev zstd \
+          libossp-uuid-dev ccache
+
+      - name: Configure
+        run: |
+          meson setup --buildtype=debug --auto-features=disabled \
+            -Dtap_tests=enabled build
+
+      - name: Build
+        run: |
+          ninja -C build -j${{ env.BUILD_JOBS }} ${{ env.MBUILD_TARGET }}
+
+      - name: Upload cache
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.CACHE_DIR }}
+          key: cache-${{ runner.os }}
+
+      - name: Minimal Test
+        run: |
+          ulimit -c unlimited
+          meson test ${{ env.MTEST_ARGS }} --suite setup
+          meson test ${{ env.MTEST_ARGS }} \
+            --num-processes ${{ env.TEST_JOBS }} \
+            cube/regress pg_ctl/001_start_stop
+
   linux-autoconf:
     name: Linux - Ubuntu noble - Autoconf
+    needs: sanity-check
     runs-on: ubuntu-24.04
     env:
       CCACHE_MAXSIZE: "250M"
