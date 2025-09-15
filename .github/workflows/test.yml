@@ -45,40 +45,36 @@ jobs:
 
       - name: Configure
         run: |
-          su postgres <<-EOF
-            ./configure \
-              --enable-cassert --enable-injection-points --enable-debug \
-              --enable-tap-tests --enable-nls \
-              --with-segsize-blocks=6 \
-              --with-libnuma \
-              --with-liburing \
-              --with-gssapi \
-              --with-icu \
-              --with-ldap \
-              --with-libcurl \
-              --with-libxml \
-              --with-libxslt \
-              --with-llvm \
-              --with-lz4 \
-              --with-pam \
-              --with-perl \
-              --with-python \
-              --with-selinux \
-              --with-ssl=openssl \
-              --with-systemd \
-              --with-tcl --with-tclconfig=/usr/lib/tcl8.6/
-              --with-uuid=ossp \
-              --with-zstd \
-              CLANG="ccache clang-16"
-          EOF
+          ./configure \
+            --enable-cassert --enable-injection-points --enable-debug \
+            --enable-tap-tests --enable-nls \
+            --with-segsize-blocks=6 \
+            --with-libnuma \
+            --with-liburing \
+            --with-gssapi \
+            --with-icu \
+            --with-ldap \
+            --with-libcurl \
+            --with-libxml \
+            --with-libxslt \
+            --with-llvm \
+            --with-lz4 \
+            --with-pam \
+            --with-perl \
+            --with-python \
+            --with-selinux \
+            --with-ssl=openssl \
+            --with-systemd \
+            --with-tcl --with-tclconfig=/usr/lib/tcl8.6/
+            --with-uuid=ossp \
+            --with-zstd \
+            CLANG="ccache clang-16"
 
       - name: Build
         run: |
-          su postgres -c "make -s -j${{ env.BUILD_JOBS }} world-bin"
+          make -s -j${{ env.BUILD_JOBS }} world-bin
 
       - name: Run tests
         run: |
-          su postgres <<-EOF
-            ulimit -c unlimited # default is 0
-            make -s ${{ env.CHECK }} ${{ env.CHECKFLAGS }} -j${{ env.TEST_JOBS }}
-          EOF
+          ulimit -c unlimited # default is 0
+          make -s ${{ env.CHECK }} ${{ env.CHECKFLAGS }} -j${{ env.TEST_JOBS }}
