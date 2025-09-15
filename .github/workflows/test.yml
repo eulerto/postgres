@@ -34,8 +34,8 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          apt-get update
-          apt-get install -y build-essential libreadline-dev zlib1g-dev
+          sudo apt-get update
+          sudo apt-get install -y build-essential libreadline-dev zlib1g-dev
 
       - name: Configure
         run: |
