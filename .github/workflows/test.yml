@@ -41,7 +41,8 @@ jobs:
           libperl-dev libreadline-dev libselinux1-dev libssl-dev \
           libsystemd-dev liburing-dev libxml2-dev libxml2-utils libxslt1-dev \
           libzstd-dev llvm-dev lz4 mawk perl pkgconf python3-dev \
-          systemtap-sdt-dev tcl-dev tzdata uuid-dev xsltproc zlib1g-dev zstd
+          systemtap-sdt-dev tcl-dev tzdata uuid-dev xsltproc zlib1g-dev zstd \
+          ccache
 
       - name: Configure
         run: |
