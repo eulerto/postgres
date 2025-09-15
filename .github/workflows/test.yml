@@ -66,7 +66,7 @@ jobs:
             --with-selinux \
             --with-ssl=openssl \
             --with-systemd \
-            --with-tcl --with-tclconfig=/usr/lib/tcl8.6/ \
+            --with-tcl \
             --with-uuid=ossp \
             --with-zstd \
             CLANG="ccache clang"
