@@ -10,12 +10,16 @@ on:
 env:
   BUILD_JOBS: 4
   TEST_JOBS: 8
+  CCACHE_DIR: "/tmp/ccache_dir"
   CHECK: check-world PROVE_FLAGS=--timer
   CHECKFLAGS: -Otarget
 
 jobs:
   build-and-test:
+    name: Linux - Ubuntu noble - Autoconf
     runs-on: ubuntu-24.04
+    env:
+      CCACHE_MAXSIZE: "250M"
     steps:
       - name: Clone repository
         uses: actions/checkout@v4
@@ -23,6 +27,12 @@ jobs:
           repository: postgres/postgres
           ref: ${{ github.head_ref }}
           token: ${{ secrets.GH_SLONIK }}
+
+      - name: Populate cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.CACHE_DIR }}
+          key: cache-${{ runner.os }}
 
       - name: System information
         run: |
@@ -74,6 +84,12 @@ jobs:
       - name: Build
         run: |
           make -s -j${{ env.BUILD_JOBS }} world-bin
+
+      - name: Upload cache
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.CACHE_DIR }}
+          key: cache-${{ runner.os }}
 
       - name: Run tests
         run: |
