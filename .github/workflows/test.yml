@@ -1,4 +1,4 @@
-name: Linux - Ubuntu - autoconf
+name: CI
 
 on:
   push:
