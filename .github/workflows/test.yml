@@ -106,7 +106,7 @@ jobs:
   compiler-warnings:
     name: Compiler warnings
     needs: sanity-check
-    if: ${{ env.CI_COMPILERWARNINGS_ENABLED }}
+    if: env.CI_COMPILERWARNINGS_ENABLED
     runs-on: ubuntu-24.04
     env:
       CCACHE_MAXSIZE: "250M"
@@ -224,7 +224,7 @@ jobs:
   linux-autoconf:
     name: Linux - Ubuntu noble - Autoconf
     needs: sanity-check
-    if: ${{ env.CI_LINUX_ENABLED }}
+    if: env.CI_LINUX_ENABLED
     runs-on: ubuntu-24.04
     env:
       CCACHE_MAXSIZE: "250M"
@@ -286,7 +286,7 @@ jobs:
           key: cache-${{ runner.os }}
 
       - name: Run tests
-        if: ${{ env.RUN_TESTS }}
+        if: env.RUN_TESTS
         run: |
           ulimit -c unlimited # default is 0
           make -s ${{ env.CHECK }} ${{ env.CHECKFLAGS }} -j${{ env.TEST_JOBS }}
