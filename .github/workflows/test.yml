@@ -71,12 +71,6 @@ jobs:
           ref: ${{ github.head_ref }}
           token: ${{ secrets.GH_SLONIK }}
 
-      - name: Populate cache
-        uses: actions/cache/restore@v4
-        with:
-          path: ${{ env.CCACHE_DIR }}
-          key: cache-${{ runner.os }}
-
       - name: System information
         run: |
           id
@@ -106,11 +100,15 @@ jobs:
         run: |
           ninja -C build -j${{ env.BUILD_JOBS }} ${{ env.MBUILD_TARGET }}
 
+      # Cache is immutable. You cannot updated it after creating. Hence, you
+      # can only save once for this workflow. There isn't another attempt to
+      # save the cache in another job because any job failure stops this
+      # workflow.
       - name: Upload cache
         uses: actions/cache/save@v4
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: cache-${{ runner.os }}
+          key: cache-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Minimal Test
         run: |
@@ -135,11 +133,13 @@ jobs:
           ref: ${{ github.head_ref }}
           token: ${{ secrets.GH_SLONIK }}
 
+      # Restore the cache saved in the sanity-check job
       - name: Populate cache
         uses: actions/cache/restore@v4
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: cache-${{ runner.os }}
+          key: cache-${{ runner.os }}-${{ runner.arch }}--${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: cache-${{ runner.os }}-${{ runner.arch }}-
 
       - name: System information
         run: |
@@ -253,11 +253,13 @@ jobs:
           ref: ${{ github.head_ref }}
           token: ${{ secrets.GH_SLONIK }}
 
+      # Restore the cache saved in the sanity-check job
       - name: Populate cache
         uses: actions/cache/restore@v4
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: cache-${{ runner.os }}
+          key: cache-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: cache-${{ runner.os }}-${{ runner.arch }}-
 
       - name: System information
         run: |
