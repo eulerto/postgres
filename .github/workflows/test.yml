@@ -18,6 +18,7 @@ env:
   MBUILD_TARGET: all testprep
   MTEST_ARGS: --print-errorlogs --no-rebuild -C build
   RUN_TESTS: false
+  CI_LINUX_ENABLED: true
 
 jobs:
   sanity-check:
@@ -85,6 +86,7 @@ jobs:
   linux-autoconf:
     name: Linux - Ubuntu noble - Autoconf
     needs: sanity-check
+    if: ${{ env.CI_LINUX_ENABLED }}
     runs-on: ubuntu-24.04
     env:
       CCACHE_MAXSIZE: "250M"
