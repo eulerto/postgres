@@ -22,22 +22,22 @@ env:
   CI_COMPILERWARNINGS: true
 
   LINUX_CONFIGURE_FEATURES: |
-    --with-gssapi
-    --with-icu
-    --with-ldap
-    --with-libcurl
-    --with-libxml
-    --with-libxslt
-    --with-llvm
-    --with-lz4
-    --with-pam
-    --with-perl
-    --with-python
-    --with-selinux
-    --with-ssl=openssl
-    --with-systemd
-    --with-tcl
-    --with-uuid=ossp
+    --with-gssapi \
+    --with-icu \
+    --with-ldap \
+    --with-libcurl \
+    --with-libxml \
+    --with-libxslt \
+    --with-llvm \
+    --with-lz4 \
+    --with-pam \
+    --with-perl \
+    --with-python \
+    --with-selinux \
+    --with-ssl=openssl \
+    --with-systemd \
+    --with-tcl \
+    --with-uuid=ossp \
     --with-zstd
 
 jobs:
@@ -287,9 +287,7 @@ jobs:
             --with-segsize-blocks=6 \
             --with-libnuma \
             --with-liburing \
-            \
             ${{ env.LINUX_CONFIGURE_FEATURES }} \
-            \
             CLANG="ccache clang"
 
       - name: Build
