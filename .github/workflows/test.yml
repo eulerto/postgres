@@ -40,6 +40,12 @@ env:
     --with-uuid=ossp \
     --with-zstd
 
+  LINUX_MESON_FEATURES: "-Duuid=e2fs"
+
+  # Postgres config args for the meson builds, shared between all meson tasks
+  # except the sanity-check task.
+  MESON_COMMON_PG_CONFIG_ARGS: "-Dcassert=true -Dinjection_points=true"
+
 jobs:
   # Since we cannot share variables between jobs, create a job that other jobs
   # depend on it to provide parameters. These parameters are used to control
@@ -307,3 +313,67 @@ jobs:
         run: |
           ulimit -c unlimited # default is 0
           make -s ${{ env.CHECK }} ${{ env.CHECKFLAGS }} -j${{ env.TEST_JOBS }}
+
+  linux-meson:
+    name: Linux - Ubuntu noble - Meson
+    needs: [prepare, sanity-check]
+    if: ${{ needs.prepare.outputs.ci_linux }}
+    runs-on: ubuntu-24.04
+    env:
+      CCACHE_MAXSIZE: "400M"
+      SANITIZER_FLAGS: "-fsanitize=alignment,undefined"
+      PG_TEST_INITDB_EXTRA_OPTS: "-c io_method=io_uring"
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v4
+        with:
+          repository: postgres/postgres
+          ref: ${{ github.head_ref }}
+          token: ${{ secrets.GH_SLONIK }}
+
+      # Restore the cache saved in the sanity-check job
+      - name: Populate cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: cache-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: cache-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: System information
+        run: |
+          id
+          uname -a
+          cat /proc/cmdline
+          ulimit -a -H && ulimit -a -S
+          export
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf bison clang flex gdb gettext \
+          libcurl4-openssl-dev libicu-dev libio-pty-perl libipc-run-perl \
+          libkrb5-dev libldap2-dev liblz4-dev libnuma-dev libpam0g-dev \
+          libperl-dev libreadline-dev libselinux1-dev libssl-dev \
+          libsystemd-dev liburing-dev libxml2-dev libxml2-utils libxslt1-dev \
+          libzstd-dev llvm-dev lz4 mawk perl pkgconf python3-dev \
+          systemtap-sdt-dev tcl-dev tzdata uuid-dev xsltproc zlib1g-dev zstd \
+          libossp-uuid-dev ccache
+
+      - name: Configure
+        run: |
+          meson setup \
+            ${{ env.MESON_COMMON_PG_CONFIG_ARGS }} \
+            --buildtype=debug \
+            ${{ env.LINUX_MESON_FEATURES }} \
+            -Dllvm=enabled \
+            build
+
+      - name: Build
+        run: |
+          ninja -C build -j${{ env.BUILD_JOBS }} ${{ env.MBUILD_TARGET }}
+          ninja -C build -t missingdeps
+
+      - name: Test
+        run: |
+          ulimit -c unlimited
+          meson test ${{ env.MTEST_ARGS }} --num-processes ${{ env.TEST_JOBS }}
