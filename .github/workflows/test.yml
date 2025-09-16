@@ -19,6 +19,26 @@ env:
   MTEST_ARGS: --print-errorlogs --no-rebuild -C build
   RUN_TESTS: false
   CI_LINUX_ENABLED: true
+  CI_COMPILERWARNINGS_ENABLED: true
+
+  LINUX_CONFIGURE_FEATURES: |
+    --with-gssapi
+    --with-icu
+    --with-ldap
+    --with-libcurl
+    --with-libxml
+    --with-libxslt
+    --with-llvm
+    --with-lz4
+    --with-pam
+    --with-perl
+    --with-python
+    --with-selinux
+    --with-ssl=openssl
+    --with-systemd
+    --with-tcl
+    --with-uuid=ossp
+    --with-zstd
 
 jobs:
   sanity-check:
@@ -83,6 +103,124 @@ jobs:
             --num-processes ${{ env.TEST_JOBS }} \
             cube/regress pg_ctl/001_start_stop
 
+  compiler-warnings:
+    name: Compiler warnings
+    needs: sanity-check
+    if: ${{ env.CI_COMPILERWARNINGS_ENABLED }}
+    runs-on: ubuntu-24.04
+    env:
+      CCACHE_MAXSIZE: "250M"
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v4
+        with:
+          repository: postgres/postgres
+          ref: ${{ github.head_ref }}
+          token: ${{ secrets.GH_SLONIK }}
+
+      - name: Populate cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: cache-${{ runner.os }}
+
+      - name: System information
+        run: |
+          id
+          uname -a
+          cat /proc/cmdline
+          ulimit -a -H && ulimit -a -S
+          gcc -v
+          clang -v
+          export
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf bison clang flex gdb gettext \
+          libcurl4-openssl-dev libicu-dev libio-pty-perl libipc-run-perl \
+          libkrb5-dev libldap2-dev liblz4-dev libnuma-dev libpam0g-dev \
+          libperl-dev libreadline-dev libselinux1-dev libssl-dev \
+          libsystemd-dev liburing-dev libxml2-dev libxml2-utils libxslt1-dev \
+          libzstd-dev llvm-dev lz4 mawk perl pkgconf python3-dev \
+          systemtap-sdt-dev tcl-dev tzdata uuid-dev xsltproc zlib1g-dev zstd \
+          libossp-uuid-dev ccache
+
+      - name: Setup script
+        run: |
+          echo "COPT=-Werror" > src/Makefile.custom
+
+      # gcc, cassert off, dtrace on
+      - name: gcc - dtrace
+        if: ${{ !cancelled() }}
+        run: |
+          time ./configure \
+            --cache gcc.cache \
+            --enable-dtrace \
+            ${{ env.LINUX_CONFIGURE_FEATURES }} \
+            CC="ccache gcc" CXX="ccache g++" CLANG="ccache clang"
+          make -s -j${{ env.BUILD_JOBS }} clean
+          time make -s -j${{ env.BUILD_JOBS }} world-bin
+
+      # gcc, cassert on, dtrace off
+      - name: gcc - cassert
+        if: ${{ !cancelled() }}
+        run: |
+          time ./configure \
+            --cache gcc.cache \
+            --enable-cassert \
+            ${{ env.LINUX_CONFIGURE_FEATURES }} \
+            CC="ccache gcc" CXX="ccache g++" CLANG="ccache clang"
+          make -s -j${{ env.BUILD_JOBS }} clean
+          time make -s -j${{ env.BUILD_JOBS }} world-bin
+
+      # clang, cassert off, dtrace off
+      - name: clang
+        if: ${{ !cancelled() }}
+        run: |
+          time ./configure \
+            --cache clang.cache \
+            ${{ env.LINUX_CONFIGURE_FEATURES }} \
+            CC="ccache clang" CXX="ccache clang++" CLANG="ccache clang"
+          make -s -j${{ env.BUILD_JOBS }} clean
+          time make -s -j${{ env.BUILD_JOBS }} world-bin
+
+      # clang, cassert on, dtrace on
+      - name: clang - cassert - dtrace
+        if: ${{ !cancelled() }}
+        run: |
+          time ./configure \
+            --cache clang.cache \
+            --enable-cassert \
+            --enable-dtrace \
+            ${{ env.LINUX_CONFIGURE_FEATURES }} \
+            CC="ccache clang" CXX="ccache clang++" CLANG="ccache clang"
+          make -s -j${{ env.BUILD_JOBS }} clean
+          time make -s -j${{ env.BUILD_JOBS }} world-bin
+
+      # headerscheck
+      - name: headerscheck
+        if: ${{ !cancelled() }}
+        run: |
+          time ./configure \
+            ${{ env.LINUX_CONFIGURE_FEATURES }} \
+            --quiet \
+            CC="gcc" CXX="g++" CLANG="clang"
+          make -s -j${{ env.BUILD_JOBS }} clean
+          time make -s headerscheck EXTRAFLAGS='-fmax-errors=10'
+
+      # cpluspluscheck
+      - name: cpluspluscheck
+        if: ${{ !cancelled() }}
+        run: |
+          time make -s cpluspluscheck EXTRAFLAGS='-fmax-errors=10'
+
+      - name: Upload cache
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: cache-${{ runner.os }}
+
   linux-autoconf:
     name: Linux - Ubuntu noble - Autoconf
     needs: sanity-check
@@ -132,23 +270,9 @@ jobs:
             --with-segsize-blocks=6 \
             --with-libnuma \
             --with-liburing \
-            --with-gssapi \
-            --with-icu \
-            --with-ldap \
-            --with-libcurl \
-            --with-libxml \
-            --with-libxslt \
-            --with-llvm \
-            --with-lz4 \
-            --with-pam \
-            --with-perl \
-            --with-python \
-            --with-selinux \
-            --with-ssl=openssl \
-            --with-systemd \
-            --with-tcl \
-            --with-uuid=ossp \
-            --with-zstd \
+            \
+            ${{ env.LINUX_CONFIGURE_FEATURES }} \
+            \
             CLANG="ccache clang"
 
       - name: Build
