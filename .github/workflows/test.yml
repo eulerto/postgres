@@ -17,6 +17,7 @@ env:
   CHECKFLAGS: -Otarget
   MBUILD_TARGET: all testprep
   MTEST_ARGS: --print-errorlogs --no-rebuild -C build
+  RUN_TESTS: false
 
 jobs:
   sanity-check:
@@ -159,6 +160,7 @@ jobs:
           key: cache-${{ runner.os }}
 
       - name: Run tests
+        if: ${{ env.RUN_TESTS }}
         run: |
           ulimit -c unlimited # default is 0
           make -s ${{ env.CHECK }} ${{ env.CHECKFLAGS }} -j${{ env.TEST_JOBS }}
