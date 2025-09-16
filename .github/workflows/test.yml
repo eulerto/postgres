@@ -18,8 +18,8 @@ env:
   MBUILD_TARGET: all testprep
   MTEST_ARGS: --print-errorlogs --no-rebuild -C build
   RUN_TESTS: false
-  CI_LINUX_ENABLED: true
-  CI_COMPILERWARNINGS_ENABLED: true
+  CI_LINUX: true
+  CI_COMPILERWARNINGS: true
 
   LINUX_CONFIGURE_FEATURES: |
     --with-gssapi
@@ -41,6 +41,23 @@ env:
     --with-zstd
 
 jobs:
+  # Since we cannot share variables between jobs, create a job that other jobs
+  # depend on it to provide parameters. These parameters are used to control
+  # the workflow execution.
+  prepare:
+    name: Set parameters
+    runs-on: ubuntu-24.04
+    outputs:
+      ci_linux: ${{ steps.id-ci-linux.outputs.ci_linux }}
+      ci_compilerwarnings: ${{ steps.id-ci-compilerwarnings.outputs.ci_compilerwarnings }}
+    steps:
+      - name: Enable CI Linux
+        id: id-ci-linux
+        run: echo "ci_linux=$CI_LINUX" >> $GITHUB_OUTPUT
+      - name: Enable CI Compiler Warnings
+        id: id-ci-compiler-warnings
+        run: echo "ci_compilerwarnings=$CI_COMPILERWARNINGS" >> $GITHUB_OUTPUT
+
   sanity-check:
     name: Sanity Check
     runs-on: ubuntu-24.04
@@ -105,8 +122,8 @@ jobs:
 
   compiler-warnings:
     name: Compiler warnings
-    needs: sanity-check
-    if: env.CI_COMPILERWARNINGS_ENABLED
+    needs: [prepare, sanity-check]
+    if: ${{ needs.prepare.outputs.ci_compilerwarnings }}
     runs-on: ubuntu-24.04
     env:
       CCACHE_MAXSIZE: "250M"
@@ -223,8 +240,8 @@ jobs:
 
   linux-autoconf:
     name: Linux - Ubuntu noble - Autoconf
-    needs: sanity-check
-    if: env.CI_LINUX_ENABLED
+    needs: [prepare, sanity-check]
+    if: ${{ needs.prepare.outputs.ci_linux }}
     runs-on: ubuntu-24.04
     env:
       CCACHE_MAXSIZE: "250M"
