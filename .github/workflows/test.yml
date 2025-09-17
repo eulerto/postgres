@@ -243,12 +243,6 @@ jobs:
         run: |
           time make -s cpluspluscheck EXTRAFLAGS='-fmax-errors=10'
 
-      - name: Upload cache
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ env.CCACHE_DIR }}
-          key: cache-${{ runner.os }}
-
   linux-autoconf:
     name: Linux - Ubuntu noble - Autoconf
     needs: [prepare, sanity-check]
