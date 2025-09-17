@@ -55,7 +55,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       ci_linux: ${{ steps.id-ci-linux.outputs.ci_linux }}
-      ci_compilerwarnings: ${{ steps.id-ci-compilerwarnings.outputs.ci_compilerwarnings }}
+      ci_compilerwarnings: ${{ steps.id-ci-compiler-warnings.outputs.ci_compilerwarnings }}
     steps:
       - name: Enable CI Linux
         id: id-ci-linux
