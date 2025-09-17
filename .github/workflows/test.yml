@@ -20,6 +20,7 @@ env:
   RUN_TESTS: false
   CI_LINUX: true
   CI_COMPILERWARNINGS: true
+  CI_WINDOWS: true
 
   LINUX_CONFIGURE_FEATURES: |
     --with-gssapi \
@@ -56,6 +57,7 @@ jobs:
     outputs:
       ci_linux: ${{ steps.id-ci-linux.outputs.ci_linux }}
       ci_compilerwarnings: ${{ steps.id-ci-compiler-warnings.outputs.ci_compilerwarnings }}
+      ci_windows: ${{ steps.id-ci-windows.outputs.ci_windows }}
     steps:
       - name: Enable CI Linux
         id: id-ci-linux
@@ -63,6 +65,9 @@ jobs:
       - name: Enable CI Compiler Warnings
         id: id-ci-compiler-warnings
         run: echo "ci_compilerwarnings=$CI_COMPILERWARNINGS" >> $GITHUB_OUTPUT
+      - name: Enable CI Windows
+        id: id-ci-windows
+        run: echo "ci_windows=$CI_WINDOWS" >> $GITHUB_OUTPUT
 
   sanity-check:
     name: Sanity Check
@@ -370,4 +375,64 @@ jobs:
       - name: Test
         run: |
           ulimit -c unlimited
+          meson test ${{ env.MTEST_ARGS }} --num-processes ${{ env.TEST_JOBS }}
+
+  windows-meson:
+    name: Windows - Server 2019 - Meson
+    needs: [prepare, sanity-check]
+    if: ${{ needs.prepare.outputs.ci_windows }}
+    runs-on: windows-2019
+    env:
+      TAR: "c:/windows/system32/tar.exe"
+      # Avoids port conflicts between concurrent tap test runs
+      PG_TEST_USE_UNIX_SOCKETS: 1
+      #PG_REGRESS_SOCK_DIR: "c:/temp/"
+      MESON_FEATURES: |
+        -Dauto_features=disabled
+        -Dldap=enabled
+        -Dssl=openssl
+        -Dtap_tests=enabled
+        -Dplperl=enabled
+        -Dplpython=enabled
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v4
+        with:
+          repository: postgres/postgres
+          ref: ${{ github.head_ref }}
+          token: ${{ secrets.GH_SLONIK }}
+
+      # Restore the cache saved in the sanity-check job
+      - name: Populate cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: cache-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: cache-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: System information
+        run: |
+          chcp
+          systeminfo
+          powershell -Command get-psdrive -psprovider filesystem
+          set
+
+      - name: Install build dependencies
+        run: |
+          REM choco install -y --no-progress ...
+
+      - name: Configure
+        run: |
+          vcvarsall x64
+          meson setup --backend ninja ${{ env.MESON_COMMON_PG_CONFIG_ARGS }} --buildtype debug -Db_pch=true -Dextra_lib_dirs=c:\openssl\1.1\lib -Dextra_include_dirs=c:\openssl\1.1\include -DTAR=${{ env.TAR }} ${{ env.MESON_FEATURES }} build
+
+      - name: Build
+        run: |
+          vcvarsall x64
+          ninja -C build ${{ env.MBUILD_TARGET }}
+          ninja -C build -t missingdeps
+
+      - name: Test
+        run: |
+          vcvarsall x64
           meson test ${{ env.MTEST_ARGS }} --num-processes ${{ env.TEST_JOBS }}
