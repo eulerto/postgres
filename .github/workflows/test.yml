@@ -38,7 +38,7 @@ env:
     --with-systemd \
     --with-tcl \
     --with-uuid=ossp \
-    --with-zstd
+    --with-zstd \
 
   LINUX_MESON_FEATURES: "-Duuid=e2fs"
 
@@ -180,7 +180,7 @@ jobs:
           time ./configure \
             --cache gcc.cache \
             --enable-dtrace \
-            ${{ env.LINUX_CONFIGURE_FEATURES }} \
+            ${{ env.LINUX_CONFIGURE_FEATURES }}
             CC="ccache gcc" CXX="ccache g++" CLANG="ccache clang"
           make -s -j${{ env.BUILD_JOBS }} clean
           time make -s -j${{ env.BUILD_JOBS }} world-bin
@@ -192,7 +192,7 @@ jobs:
           time ./configure \
             --cache gcc.cache \
             --enable-cassert \
-            ${{ env.LINUX_CONFIGURE_FEATURES }} \
+            ${{ env.LINUX_CONFIGURE_FEATURES }}
             CC="ccache gcc" CXX="ccache g++" CLANG="ccache clang"
           make -s -j${{ env.BUILD_JOBS }} clean
           time make -s -j${{ env.BUILD_JOBS }} world-bin
@@ -203,7 +203,7 @@ jobs:
         run: |
           time ./configure \
             --cache clang.cache \
-            ${{ env.LINUX_CONFIGURE_FEATURES }} \
+            ${{ env.LINUX_CONFIGURE_FEATURES }}
             CC="ccache clang" CXX="ccache clang++" CLANG="ccache clang"
           make -s -j${{ env.BUILD_JOBS }} clean
           time make -s -j${{ env.BUILD_JOBS }} world-bin
@@ -216,7 +216,7 @@ jobs:
             --cache clang.cache \
             --enable-cassert \
             --enable-dtrace \
-            ${{ env.LINUX_CONFIGURE_FEATURES }} \
+            ${{ env.LINUX_CONFIGURE_FEATURES }}
             CC="ccache clang" CXX="ccache clang++" CLANG="ccache clang"
           make -s -j${{ env.BUILD_JOBS }} clean
           time make -s -j${{ env.BUILD_JOBS }} world-bin
@@ -226,8 +226,8 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           time ./configure \
-            ${{ env.LINUX_CONFIGURE_FEATURES }} \
             --quiet \
+            ${{ env.LINUX_CONFIGURE_FEATURES }}
             CC="gcc" CXX="g++" CLANG="clang"
           make -s -j${{ env.BUILD_JOBS }} clean
           time make -s headerscheck EXTRAFLAGS='-fmax-errors=10'
@@ -295,7 +295,7 @@ jobs:
             --with-segsize-blocks=6 \
             --with-libnuma \
             --with-liburing \
-            ${{ env.LINUX_CONFIGURE_FEATURES }} \
+            ${{ env.LINUX_CONFIGURE_FEATURES }}
             CLANG="ccache clang"
 
       - name: Build
