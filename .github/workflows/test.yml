@@ -302,12 +302,6 @@ jobs:
         run: |
           make -s -j${{ env.BUILD_JOBS }} world-bin
 
-      - name: Upload cache
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ env.CCACHE_DIR }}
-          key: cache-${{ runner.os }}
-
       - name: Run tests
         if: env.RUN_TESTS
         run: |
