@@ -375,7 +375,7 @@ jobs:
     name: Windows - Server 2019 - Meson
     needs: [prepare, sanity-check]
     if: ${{ needs.prepare.outputs.ci_windows }}
-    runs-on: windows-2019
+    runs-on: windows-2022
     env:
       TAR: "c:/windows/system32/tar.exe"
       # Avoids port conflicts between concurrent tap test runs
