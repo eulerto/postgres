@@ -408,8 +408,8 @@ jobs:
         run: |
           chcp
           systeminfo
-          powershell -Command get-psdrive -psprovider filesystem
-          set
+          powershell -Command Get-PSDrive -PSProvider filesystem
+          powershell -Command gci env:
 
       - name: Install build dependencies
         run: |
