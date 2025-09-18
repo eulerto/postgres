@@ -372,7 +372,7 @@ jobs:
           meson test ${{ env.MTEST_ARGS }} --num-processes ${{ env.TEST_JOBS }}
 
   windows-meson:
-    name: Windows - Server 2019 - Meson
+    name: Windows - Server 2022 - Meson
     needs: [prepare, sanity-check]
     if: ${{ needs.prepare.outputs.ci_windows }}
     runs-on: windows-2022
