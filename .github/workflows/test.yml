@@ -411,9 +411,9 @@ jobs:
           powershell -Command Get-PSDrive -PSProvider filesystem
           powershell -Command gci env:
 
-      - name: Install build dependencies
-        run: |
-          REM choco install -y --no-progress ...
+#      - name: Install build dependencies
+#        run: |
+#          REM choco install -y --no-progress ...
 
       - name: Configure
         run: |
