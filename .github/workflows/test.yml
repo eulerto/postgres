@@ -1,3 +1,4 @@
+# CI configuration file
 name: CI
 
 on:
@@ -69,6 +70,8 @@ jobs:
         id: id-ci-windows
         run: echo "ci_windows=$CI_WINDOWS" >> $GITHUB_OUTPUT
 
+  # Don't waste cycles if there is a broken commit. This job aims to build and
+  # run a minimal test. All other jobs depend on it.
   sanity-check:
     name: Sanity Check
     runs-on: ubuntu-24.04
@@ -405,28 +408,33 @@ jobs:
           restore-keys: cache-${{ runner.os }}-${{ runner.arch }}-
 
       - name: System information
+        shell: cmd
         run: |
           chcp
           systeminfo
           powershell -Command Get-PSDrive -PSProvider filesystem
-          powershell -Command gci env:
+#          powershell -Command gci env:
+          set
 
 #      - name: Install build dependencies
 #        run: |
 #          REM choco install -y --no-progress ...
 
       - name: Configure
+        shell: cmd
         run: |
           vcvarsall x64
           meson setup --backend ninja ${{ env.MESON_COMMON_PG_CONFIG_ARGS }} --buildtype debug -Db_pch=true -Dextra_lib_dirs=c:\openssl\1.1\lib -Dextra_include_dirs=c:\openssl\1.1\include -DTAR=${{ env.TAR }} ${{ env.MESON_FEATURES }} build
 
       - name: Build
+        shell: cmd
         run: |
           vcvarsall x64
           ninja -C build ${{ env.MBUILD_TARGET }}
           ninja -C build -t missingdeps
 
       - name: Test
+        shell: cmd
         run: |
           vcvarsall x64
           meson test ${{ env.MTEST_ARGS }} --num-processes ${{ env.TEST_JOBS }}
