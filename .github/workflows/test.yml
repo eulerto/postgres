@@ -413,12 +413,12 @@ jobs:
           chcp
           systeminfo
           powershell -Command Get-PSDrive -PSProvider filesystem
-#          powershell -Command gci env:
           set
 
-#      - name: Install build dependencies
-#        run: |
-#          REM choco install -y --no-progress ...
+      - name: Install build dependencies
+        shell: cmd
+        run: |
+          REM choco install -y --no-progress ...
 
       - name: Configure
         shell: cmd
