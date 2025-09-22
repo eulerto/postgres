@@ -135,7 +135,7 @@ jobs:
   compiler-warnings:
     name: Compiler warnings
     needs: [prepare, sanity-check]
-    if: ${{ needs.prepare.outputs.ci_compilerwarnings }}
+    if: ${{ needs.prepare.outputs.ci_compilerwarnings == 'true' }}
     runs-on: ubuntu-24.04
     env:
       CCACHE_MAXSIZE: "250M"
@@ -249,7 +249,7 @@ jobs:
   linux-autoconf:
     name: Linux - Ubuntu noble - Autoconf
     needs: [prepare, sanity-check]
-    if: ${{ needs.prepare.outputs.ci_linux }}
+    if: ${{ needs.prepare.outputs.ci_linux == 'true' }}
     runs-on: ubuntu-24.04
     env:
       CCACHE_MAXSIZE: "250M"
@@ -313,7 +313,7 @@ jobs:
   linux-meson:
     name: Linux - Ubuntu noble - Meson
     needs: [prepare, sanity-check]
-    if: ${{ needs.prepare.outputs.ci_linux }}
+    if: ${{ needs.prepare.outputs.ci_linux == 'true' }}
     runs-on: ubuntu-24.04
     env:
       CCACHE_MAXSIZE: "400M"
@@ -377,7 +377,7 @@ jobs:
   windows-meson:
     name: Windows - Server 2022 - Meson
     needs: [prepare, sanity-check]
-    if: ${{ needs.prepare.outputs.ci_windows }}
+    if: ${{ needs.prepare.outputs.ci_windows == 'true' }}
     runs-on: windows-2022
     env:
       VCVARS_PATH: "c:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Auxiliary/Build"
