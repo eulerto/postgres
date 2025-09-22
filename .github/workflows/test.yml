@@ -408,9 +408,9 @@ jobs:
           key: cache-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: cache-${{ runner.os }}-${{ runner.arch }}-
 
-      - name: Set path
-        shell: cmd
-        run: echo ${{ env.VCVARS_PATH }} >> %GITHUB_PATH%
+#      - name: Set path
+#        shell: cmd
+#        run: echo ${{ env.VCVARS_PATH }} >> %GITHUB_PATH%
 
       - name: System information
         shell: cmd
@@ -428,20 +428,18 @@ jobs:
       - name: Configure
         shell: cmd
         run: |
-          set
-          dir "${{ env.VCVARS_PATH }}"
           "${{ env.VCVARS_PATH }}\\vcvarsall" x64
           meson setup --backend ninja ${{ env.MESON_COMMON_PG_CONFIG_ARGS }} --buildtype debug -Db_pch=true -Dextra_lib_dirs=c:\openssl\1.1\lib -Dextra_include_dirs=c:\openssl\1.1\include -DTAR=${{ env.TAR }} ${{ env.MESON_FEATURES }} build
 
       - name: Build
         shell: cmd
         run: |
-          vcvarsall x64
+          "${{ env.VCVARS_PATH }}\\vcvarsall" x64
           ninja -C build ${{ env.MBUILD_TARGET }}
           ninja -C build -t missingdeps
 
       - name: Test
         shell: cmd
         run: |
-          vcvarsall x64
+          "${{ env.VCVARS_PATH }}\\vcvarsall" x64
           meson test ${{ env.MTEST_ARGS }} --num-processes ${{ env.TEST_JOBS }}
