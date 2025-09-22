@@ -429,7 +429,7 @@ jobs:
         shell: cmd
         run: |
           set
-          dir ${{ env.VCVARS_PATH }}
+          dir "${{ env.VCVARS_PATH }}"
           vcvarsall x64
           meson setup --backend ninja ${{ env.MESON_COMMON_PG_CONFIG_ARGS }} --buildtype debug -Db_pch=true -Dextra_lib_dirs=c:\openssl\1.1\lib -Dextra_include_dirs=c:\openssl\1.1\include -DTAR=${{ env.TAR }} ${{ env.MESON_FEATURES }} build
 
