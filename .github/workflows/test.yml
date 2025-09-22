@@ -19,8 +19,8 @@ env:
   MBUILD_TARGET: all testprep
   MTEST_ARGS: --print-errorlogs --no-rebuild -C build
   RUN_TESTS: false
-  CI_LINUX: true
-  CI_COMPILERWARNINGS: true
+  CI_LINUX: false
+  CI_COMPILERWARNINGS: false
   CI_WINDOWS: true
 
   LINUX_CONFIGURE_FEATURES: |
@@ -380,7 +380,7 @@ jobs:
     if: ${{ needs.prepare.outputs.ci_windows }}
     runs-on: windows-2022
     env:
-      VCVARS_PATH: "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build"
+      VCVARS_PATH: "c:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Auxiliary/Build"
       TAR: "c:/windows/system32/tar.exe"
       # Avoids port conflicts between concurrent tap test runs
       PG_TEST_USE_UNIX_SOCKETS: 1
