@@ -409,8 +409,8 @@ jobs:
           restore-keys: cache-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Set path
-        run: echo "${{ env.VCVARS_PATH }}" >> $GITHUB_PATH
         shell: cmd
+        run: echo "${{ env.VCVARS_PATH }}" >> %GITHUB_PATH%
 
       - name: System information
         shell: cmd
