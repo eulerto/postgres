@@ -276,9 +276,6 @@ jobs:
           cat /proc/cmdline
           ulimit -a -H && ulimit -a -S
           export
-          ls -la ${{ env.CCACHE_DIR }}
-          du -sh ${{ env.CCACHE_DIR }}
-          ccache -s
 
       - name: Install build dependencies
         run: |
@@ -291,6 +288,12 @@ jobs:
           libzstd-dev llvm-dev lz4 mawk perl pkgconf python3-dev \
           systemtap-sdt-dev tcl-dev tzdata uuid-dev xsltproc zlib1g-dev zstd \
           libossp-uuid-dev ccache
+
+      - name: Cache information
+        run: |
+          ls -la ${{ env.CCACHE_DIR }}
+          du -sh ${{ env.CCACHE_DIR }}
+          ccache -s
 
       - name: Configure
         run: |
@@ -345,9 +348,6 @@ jobs:
           cat /proc/cmdline
           ulimit -a -H && ulimit -a -S
           export
-          ls -la ${{ env.CCACHE_DIR }}
-          du -sh ${{ env.CCACHE_DIR }}
-          ccache -s
 
       - name: Install build dependencies
         run: |
@@ -360,6 +360,12 @@ jobs:
           libzstd-dev llvm-dev lz4 mawk perl pkgconf python3-dev \
           systemtap-sdt-dev tcl-dev tzdata uuid-dev xsltproc zlib1g-dev zstd \
           libossp-uuid-dev ccache meson
+
+      - name: Cache information
+        run: |
+          ls -la ${{ env.CCACHE_DIR }}
+          du -sh ${{ env.CCACHE_DIR }}
+          ccache -s
 
       - name: Configure
         run: |
