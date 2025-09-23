@@ -277,6 +277,8 @@ jobs:
           ulimit -a -H && ulimit -a -S
           export
           ls -la ${{ env.CCACHE_DIR }}
+          du -sh ${{ env.CCACHE_DIR }}
+          ccache -s
 
       - name: Install build dependencies
         run: |
@@ -303,13 +305,13 @@ jobs:
 
       - name: Build
         run: |
-          make -s -j${{ env.BUILD_JOBS }} world-bin
+          time make -s -j${{ env.BUILD_JOBS }} world-bin
 
       - name: Run tests
         if: env.RUN_TESTS
         run: |
           ulimit -c unlimited # default is 0
-          make -s ${{ env.CHECK }} ${{ env.CHECKFLAGS }} -j${{ env.TEST_JOBS }}
+          time make -s ${{ env.CHECK }} ${{ env.CHECKFLAGS }} -j${{ env.TEST_JOBS }}
 
   linux-meson:
     name: Linux - Ubuntu noble - Meson
@@ -344,6 +346,8 @@ jobs:
           ulimit -a -H && ulimit -a -S
           export
           ls -la ${{ env.CCACHE_DIR }}
+          du -sh ${{ env.CCACHE_DIR }}
+          ccache -s
 
       - name: Install build dependencies
         run: |
@@ -368,13 +372,13 @@ jobs:
 
       - name: Build
         run: |
-          ninja -C build -j${{ env.BUILD_JOBS }} ${{ env.MBUILD_TARGET }}
-          ninja -C build -t missingdeps
+          time ninja -C build -j${{ env.BUILD_JOBS }} ${{ env.MBUILD_TARGET }}
+          time ninja -C build -t missingdeps
 
       - name: Test
         run: |
           ulimit -c unlimited
-          meson test ${{ env.MTEST_ARGS }} --num-processes ${{ env.TEST_JOBS }}
+          time meson test ${{ env.MTEST_ARGS }} --num-processes ${{ env.TEST_JOBS }}
 
   windows-meson:
     name: Windows - Server 2022 - Meson
