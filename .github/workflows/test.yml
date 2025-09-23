@@ -13,15 +13,15 @@ on:
 env:
   BUILD_JOBS: 4
   TEST_JOBS: 8
-  CCACHE_DIR: "/tmp/ccache_dir"
+  CCACHE_DIR: "${{ github.workspace }}/ccache_dir"
   CHECK: check-world PROVE_FLAGS=--timer
   CHECKFLAGS: -Otarget
   MBUILD_TARGET: all testprep
   MTEST_ARGS: --print-errorlogs --no-rebuild -C build
   RUN_TESTS: false
-  CI_LINUX: false
-  CI_COMPILERWARNINGS: false
-  CI_WINDOWS: true
+  CI_LINUX: true
+  CI_COMPILERWARNINGS: true
+  CI_WINDOWS: false
 
   LINUX_CONFIGURE_FEATURES: |
     --with-gssapi \
@@ -276,6 +276,7 @@ jobs:
           cat /proc/cmdline
           ulimit -a -H && ulimit -a -S
           export
+          ls -la ${{ env.CCACHE_DIR }}
 
       - name: Install build dependencies
         run: |
@@ -342,6 +343,7 @@ jobs:
           cat /proc/cmdline
           ulimit -a -H && ulimit -a -S
           export
+          ls -la ${{ env.CCACHE_DIR }}
 
       - name: Install build dependencies
         run: |
@@ -428,18 +430,18 @@ jobs:
       - name: Configure
         shell: cmd
         run: |
-          "${{ env.VCVARS_PATH }}\\vcvarsall" x64
+          "${{ env.VCVARS_PATH }}\vcvarsall" x64
           meson setup --backend ninja ${{ env.MESON_COMMON_PG_CONFIG_ARGS }} --buildtype debug -Db_pch=true -Dextra_lib_dirs=c:\openssl\1.1\lib -Dextra_include_dirs=c:\openssl\1.1\include -DTAR=${{ env.TAR }} ${{ env.MESON_FEATURES }} build
 
       - name: Build
         shell: cmd
         run: |
-          "${{ env.VCVARS_PATH }}\\vcvarsall" x64
+          "${{ env.VCVARS_PATH }}\vcvarsall" x64
           ninja -C build ${{ env.MBUILD_TARGET }}
           ninja -C build -t missingdeps
 
       - name: Test
         shell: cmd
         run: |
-          "${{ env.VCVARS_PATH }}\\vcvarsall" x64
+          "${{ env.VCVARS_PATH }}\vcvarsall" x64
           meson test ${{ env.MTEST_ARGS }} --num-processes ${{ env.TEST_JOBS }}
