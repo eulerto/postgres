@@ -177,6 +177,12 @@ jobs:
           systemtap-sdt-dev tcl-dev tzdata uuid-dev xsltproc zlib1g-dev zstd \
           libossp-uuid-dev ccache
 
+      - name: Cache information
+        run: |
+          ls -la ${{ env.CCACHE_DIR }}
+          du -sh ${{ env.CCACHE_DIR }}
+          ccache -s
+
       - name: Setup script
         run: |
           echo "COPT=-Werror" > src/Makefile.custom
@@ -193,6 +199,12 @@ jobs:
           make -s -j${{ env.BUILD_JOBS }} clean
           time make -s -j${{ env.BUILD_JOBS }} world-bin
 
+      - name: Cache information
+        run: |
+          ls -la ${{ env.CCACHE_DIR }}
+          du -sh ${{ env.CCACHE_DIR }}
+          ccache -s
+
       # gcc, cassert on, dtrace off
       - name: gcc - cassert
         if: ${{ !cancelled() }}
@@ -205,6 +217,12 @@ jobs:
           make -s -j${{ env.BUILD_JOBS }} clean
           time make -s -j${{ env.BUILD_JOBS }} world-bin
 
+      - name: Cache information
+        run: |
+          ls -la ${{ env.CCACHE_DIR }}
+          du -sh ${{ env.CCACHE_DIR }}
+          ccache -s
+
       # clang, cassert off, dtrace off
       - name: clang
         if: ${{ !cancelled() }}
@@ -215,6 +233,12 @@ jobs:
             CC="ccache clang" CXX="ccache clang++" CLANG="ccache clang"
           make -s -j${{ env.BUILD_JOBS }} clean
           time make -s -j${{ env.BUILD_JOBS }} world-bin
+
+      - name: Cache information
+        run: |
+          ls -la ${{ env.CCACHE_DIR }}
+          du -sh ${{ env.CCACHE_DIR }}
+          ccache -s
 
       # clang, cassert on, dtrace on
       - name: clang - cassert - dtrace
@@ -228,6 +252,12 @@ jobs:
             CC="ccache clang" CXX="ccache clang++" CLANG="ccache clang"
           make -s -j${{ env.BUILD_JOBS }} clean
           time make -s -j${{ env.BUILD_JOBS }} world-bin
+
+      - name: Cache information
+        run: |
+          ls -la ${{ env.CCACHE_DIR }}
+          du -sh ${{ env.CCACHE_DIR }}
+          ccache -s
 
       # headerscheck
       - name: headerscheck
