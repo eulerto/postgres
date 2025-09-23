@@ -9,6 +9,22 @@ on:
   pull_request:
 
   workflow_dispatch:
+    inputs:
+      ci-ubuntu:
+        description: Ubuntu 24.04
+        type: boolean
+        required: true
+        default: true
+      ci-windows:
+        description: Windows Server 2022
+        type: boolean
+        required: true
+        default: true
+      compiler-warnings:
+        description: Compiler Warnings
+        type: boolean
+        required: true
+        default: true
 
 env:
   BUILD_JOBS: 4
@@ -19,7 +35,7 @@ env:
   MBUILD_TARGET: all testprep
   MTEST_ARGS: --print-errorlogs --no-rebuild -C build
   RUN_TESTS: false
-  CI_LINUX: true
+  CI_UBUNTU: true
   CI_COMPILERWARNINGS: true
   CI_WINDOWS: false
 
@@ -56,19 +72,24 @@ jobs:
     name: Set parameters
     runs-on: ubuntu-24.04
     outputs:
-      ci_linux: ${{ steps.id-ci-linux.outputs.ci_linux }}
+      ci_ubuntu: ${{ steps.id-ci-ubuntu.outputs.ci_ubuntu }}
       ci_compilerwarnings: ${{ steps.id-ci-compiler-warnings.outputs.ci_compilerwarnings }}
       ci_windows: ${{ steps.id-ci-windows.outputs.ci_windows }}
     steps:
-      - name: Enable CI Linux
-        id: id-ci-linux
-        run: echo "ci_linux=$CI_LINUX" >> $GITHUB_OUTPUT
+      - name: Enable CI Ubuntu
+        id: id-ci-ubuntu
+        run: echo "ci_ubuntu=$CI_UBUNTU" >> $GITHUB_OUTPUT
       - name: Enable CI Compiler Warnings
         id: id-ci-compiler-warnings
         run: echo "ci_compilerwarnings=$CI_COMPILERWARNINGS" >> $GITHUB_OUTPUT
       - name: Enable CI Windows
         id: id-ci-windows
         run: echo "ci_windows=$CI_WINDOWS" >> $GITHUB_OUTPUT
+      - name: Input
+        run: |
+          echo "Ubuntu: ${{ inputs.ci-ubuntu }}"
+          echo "Windows: ${{ inputs.ci-windows }}"
+          echo "Compiler Warnings: ${{ inputs.compiler-warnings }}"
 
   # Don't waste cycles if there is a broken commit. This job aims to build and
   # run a minimal test. All other jobs depend on it.
@@ -276,10 +297,10 @@ jobs:
         run: |
           time make -s cpluspluscheck EXTRAFLAGS='-fmax-errors=10'
 
-  linux-autoconf:
+  ubuntu-autoconf:
     name: Linux - Ubuntu noble - Autoconf
     needs: [prepare, sanity-check]
-    if: ${{ needs.prepare.outputs.ci_linux == 'true' }}
+    if: ${{ needs.prepare.outputs.ci_ubuntu == 'true' }}
     runs-on: ubuntu-24.04
     env:
       CCACHE_MAXSIZE: "250M"
@@ -346,10 +367,10 @@ jobs:
           ulimit -c unlimited # default is 0
           time make -s ${{ env.CHECK }} ${{ env.CHECKFLAGS }} -j${{ env.TEST_JOBS }}
 
-  linux-meson:
+  ubuntu-meson:
     name: Linux - Ubuntu noble - Meson
     needs: [prepare, sanity-check]
-    if: ${{ needs.prepare.outputs.ci_linux == 'true' }}
+    if: ${{ needs.prepare.outputs.ci_ubuntu == 'true' }}
     runs-on: ubuntu-24.04
     env:
       CCACHE_MAXSIZE: "400M"
