@@ -2683,6 +2683,16 @@
   boot_val => '"%m [%p] "',
 },
 
+{ name => 'log_min_messages', type => 'string', context => 'PGC_SUSET', group => 'LOGGING_WHEN',
+  short_desc => 'Sets the message levels that are logged.',
+  long_desc => 'Each level includes all the levels that follow it. The later the level, the fewer messages are sent.',
+  flags => 'GUC_LIST_INPUT',
+  variable => 'log_min_messages_string',
+  boot_val => '"WARNING"',
+  check_hook => 'check_log_min_messages',
+  assign_hook => 'assign_log_min_messages',
+},
+
 { name => 'log_timezone', type => 'string', context => 'PGC_SIGHUP', group => 'LOGGING_WHAT',
   short_desc => 'Sets the time zone to use in log messages.',
   variable => 'log_timezone_string',
@@ -3250,14 +3260,6 @@
   variable => 'Log_error_verbosity',
   boot_val => 'PGERROR_DEFAULT',
   options => 'log_error_verbosity_options',
-},
-
-{ name => 'log_min_messages', type => 'enum', context => 'PGC_SUSET', group => 'LOGGING_WHEN',
-  short_desc => 'Sets the message levels that are logged.',
-  long_desc => 'Each level includes all the levels that follow it. The later the level, the fewer messages are sent.',
-  variable => 'log_min_messages',
-  boot_val => 'WARNING',
-  options => 'server_message_level_options',
 },
 
 { name => 'log_min_error_statement', type => 'enum', context => 'PGC_SUSET', group => 'LOGGING_WHEN',
