@@ -146,7 +146,7 @@ static const struct config_enum_entry client_message_level_options[] = {
 	{NULL, 0, false}
 };
 
-static const struct config_enum_entry server_message_level_options[] = {
+const struct config_enum_entry server_message_level_options[] = {
 	{"debug5", DEBUG5, false},
 	{"debug4", DEBUG4, false},
 	{"debug3", DEBUG3, false},
@@ -537,7 +537,6 @@ static bool default_with_oids = false;
 bool		current_role_is_superuser;
 
 int			log_min_error_statement = ERROR;
-int			log_min_messages = WARNING;
 int			client_min_messages = NOTICE;
 int			log_min_duration_sample = -1;
 int			log_min_duration_statement = -1;
@@ -595,6 +594,7 @@ static char *server_version_string;
 static int	server_version_num;
 static char *debug_io_direct_string;
 static char *restrict_nonsystem_relation_kind_string;
+static char *log_min_messages_string;
 
 #ifdef HAVE_SYSLOG
 #define	DEFAULT_SYSLOG_FACILITY LOG_LOCAL0

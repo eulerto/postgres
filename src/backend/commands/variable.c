@@ -34,12 +34,30 @@
 #include "utils/backend_status.h"
 #include "utils/datetime.h"
 #include "utils/fmgrprotos.h"
+#include "utils/guc.h"
 #include "utils/guc_hooks.h"
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 #include "utils/timestamp.h"
 #include "utils/tzparser.h"
 #include "utils/varlena.h"
+
+/*
+ * log_min_messages
+ */
+int			log_min_messages[] = {
+#define PG_PROCTYPE(bktype, bkcategory, description, main_func, shmem_attach, log_min_messages) \
+	[bktype] = log_min_messages,
+#include "postmaster/proctypelist.h"
+#undef PG_PROCTYPE
+};
+
+const char *const log_min_messages_backend_types[] = {
+#define PG_PROCTYPE(bktype, bkcategory, description, main_func, shmem_attach, log_min_messages) \
+	[bktype] = bkcategory,
+#include "postmaster/proctypelist.h"
+#undef PG_PROCTYPE
+};
 
 /*
  * DATESTYLE
@@ -1256,4 +1274,208 @@ check_ssl(bool *newval, void **extra, GucSource source)
 	}
 #endif
 	return true;
+}
+
+/*
+ * GUC check_hook for log_min_messages
+ *
+ * The parsing consists of a comma-separated list of BACKENDTYPENAME:LEVEL
+ * elements. BACKENDTYPENAME is log_min_messages_backend_types.  LEVEL is
+ * server_message_level_options. A single LEVEL element should be part of this
+ * list and it is applied as a final step to the backend types that are not
+ * specified. For backward compatibility, the old syntax is still accepted and
+ * it means to apply the LEVEL for all backend types.
+ */
+bool
+check_log_min_messages(char **newval, void **extra, GucSource source)
+{
+	char	   *rawstring;
+	List	   *elemlist;
+	ListCell   *l;
+	int			newlevel[BACKEND_NUM_TYPES];
+	bool		assigned[BACKEND_NUM_TYPES];
+	int			genericlevel = -1;	/* -1 means not assigned */
+
+	/* Initialize the array. */
+	memset(newlevel, WARNING, BACKEND_NUM_TYPES * sizeof(int));
+	memset(assigned, false, BACKEND_NUM_TYPES * sizeof(bool));
+
+	/* Need a modifiable copy of string. */
+	rawstring = guc_strdup(LOG, *newval);
+
+	/* Parse string into list of identifiers. */
+	if (!SplitGUCList(rawstring, ',', &elemlist))
+	{
+		/* syntax error in list */
+		GUC_check_errdetail("List syntax is invalid.");
+		guc_free(rawstring);
+		list_free(elemlist);
+		return false;
+	}
+
+	/* Validate and assign log level and backend type. */
+	foreach(l, elemlist)
+	{
+		char	   *tok = (char *) lfirst(l);
+		char	   *sep;
+		const struct config_enum_entry *entry;
+
+		/*
+		 * Check whether there is a backend type following the log level. If
+		 * there is no separator, it means this is the generic log level. The
+		 * generic log level will be assigned to the backend types that were
+		 * not informed.
+		 */
+		sep = strchr(tok, ':');
+		if (sep == NULL)
+		{
+			bool		found = false;
+
+			/* Reject duplicates for generic log level. */
+			if (genericlevel != -1)
+			{
+				GUC_check_errdetail("Generic log level was already assigned.");
+				guc_free(rawstring);
+				list_free(elemlist);
+				return false;
+			}
+
+			/* Is the log level valid? */
+			for (entry = server_message_level_options; entry && entry->name; entry++)
+			{
+				if (pg_strcasecmp(entry->name, tok) == 0)
+				{
+					genericlevel = entry->val;
+					found = true;
+					break;
+				}
+			}
+
+			if (!found)
+			{
+				GUC_check_errdetail("Unrecognized log level: \"%s\".", tok);
+				guc_free(rawstring);
+				list_free(elemlist);
+				return false;
+			}
+		}
+		else
+		{
+			char	   *loglevel;
+			char	   *btype;
+			bool		found = false;
+
+			btype = guc_malloc(LOG, (sep - tok) + 1);
+			if (!btype)
+			{
+				guc_free(rawstring);
+				list_free(elemlist);
+				return false;
+			}
+			memcpy(btype, tok, sep - tok);
+			btype[sep - tok] = '\0';
+			loglevel = sep + 1;
+
+			/* Is the log level valid? */
+			for (entry = server_message_level_options; entry && entry->name; entry++)
+			{
+				if (pg_strcasecmp(entry->name, loglevel) == 0)
+				{
+					found = true;
+					break;
+				}
+			}
+
+			if (!found)
+			{
+				GUC_check_errdetail("Unrecognized log level: \"%s\".", loglevel);
+				guc_free(btype);
+				guc_free(rawstring);
+				list_free(elemlist);
+				return false;
+			}
+
+			/*
+			 * Is the backend type name valid? There might be multiple entries
+			 * per backend type, don't bail out because it can assign the
+			 * value for multiple entries.
+			 */
+			found = false;
+			for (int i = 0; i < BACKEND_NUM_TYPES; i++)
+			{
+				if (pg_strcasecmp(log_min_messages_backend_types[i], btype) == 0)
+				{
+					/* Reject duplicates for a backend type. */
+					if (assigned[i])
+					{
+						GUC_check_errdetail("Backend type \"%s\" was already assigned.", btype);
+						guc_free(btype);
+						guc_free(rawstring);
+						list_free(elemlist);
+						return false;
+					}
+
+					newlevel[i] = entry->val;
+					assigned[i] = true;
+					found = true;
+				}
+			}
+
+			if (!found)
+			{
+				GUC_check_errdetail("Unrecognized backend type: \"%s\".", btype);
+				guc_free(btype);
+				guc_free(rawstring);
+				list_free(elemlist);
+				return false;
+			}
+
+			guc_free(btype);
+		}
+	}
+
+	/*
+	 * The generic log level must be specified. It is the fallback value.
+	 */
+	if (genericlevel == -1)
+	{
+		GUC_check_errdetail("Generic log level was not defined.");
+		guc_free(rawstring);
+		list_free(elemlist);
+		return false;
+	}
+
+	/*
+	 * Apply the generic log level after all of the specific backend type have
+	 * been assigned. Hence, it doesn't matter the order you specify the
+	 * generic log level, the final result will be the same.
+	 */
+	for (int i = 0; i < BACKEND_NUM_TYPES; i++)
+	{
+		if (!assigned[i])
+			newlevel[i] = genericlevel;
+	}
+
+	guc_free(rawstring);
+	list_free(elemlist);
+
+	/*
+	 * Pass back data for assign_log_min_messages to use.
+	 */
+	*extra = guc_malloc(LOG, BACKEND_NUM_TYPES * sizeof(int));
+	if (!*extra)
+		return false;
+	memcpy(*extra, newlevel, BACKEND_NUM_TYPES * sizeof(int));
+
+	return true;
+}
+
+/*
+ * GUC assign_hook for log_min_messages
+ */
+void
+assign_log_min_messages(const char *newval, void *extra)
+{
+	for (int i = 0; i < BACKEND_NUM_TYPES; i++)
+		log_min_messages[i] = ((int *) extra)[i];
 }
