@@ -34,12 +34,15 @@
 #include "utils/backend_status.h"
 #include "utils/datetime.h"
 #include "utils/fmgrprotos.h"
+#include "utils/guc.h"
 #include "utils/guc_hooks.h"
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 #include "utils/timestamp.h"
 #include "utils/tzparser.h"
 #include "utils/varlena.h"
+
+static int	log_min_messages_cmp(const ListCell *a, const ListCell *b);
 
 /*
  * DATESTYLE
@@ -1271,4 +1274,242 @@ check_standard_conforming_strings(bool *newval, void **extra, GucSource source)
 	}
 
 	return true;
+}
+
+/*
+ * GUC check_hook for log_min_messages
+ *
+ * This value is parsed as a comma-separated list of zero or more TYPE:LEVEL
+ * elements.  For each element, TYPE corresponds to a bk_category value (see
+ * postmaster/proctypelist.h), and LEVEL is one of log_min_message_lvls.
+ *
+ * In addition, there must be a single LEVEL element (with no TYPE part)
+ * which sets the default level for process types that aren't specified.
+ */
+bool
+check_log_min_messages(char **newval, void **extra, GucSource source)
+{
+	char	   *rawstring;
+	List	   *elemlist;
+	StringInfoData buf;
+	char	   *result;
+	int			newlevel[BACKEND_NUM_TYPES];
+	bool		assigned[BACKEND_NUM_TYPES] = {0};
+	int			defaultlevel = -1;	/* -1 means not assigned */
+
+	const char *const process_types[] = {
+#define PG_PROCTYPE(bktype, bkcategory, description, main_func, shmem_attach) \
+		[bktype] = bkcategory,
+#include "postmaster/proctypelist.h"
+#undef PG_PROCTYPE
+	};
+
+	/* Need a modifiable copy of string. */
+	rawstring = guc_strdup(LOG, *newval);
+
+	/* Parse the string into a list. */
+	if (!SplitGUCList(rawstring, ',', &elemlist))
+	{
+		/* syntax error in list */
+		GUC_check_errdetail("List syntax is invalid.");
+		list_free(elemlist);
+		guc_free(rawstring);
+		return false;
+	}
+
+	/* Validate and assign log level and process type. */
+	foreach_ptr(char, tok, elemlist)
+	{
+		char	   *sep = strchr(tok, ':');
+
+		/*
+		 * If there's no ':' separator in the entry, this is the default
+		 * value.  Otherwise it's a process type-specific entry.
+		 */
+		if (sep == NULL)
+		{
+			const struct config_enum_entry *entry;
+			bool		found = false;
+
+			/* Reject duplicates for default log level. */
+			if (defaultlevel != -1)
+			{
+				GUC_check_errdetail("Redundant specification of default log level.");
+				goto lmm_fail;
+			}
+
+			/* Is the log level valid? */
+			for (entry = server_message_level_options; entry && entry->name; entry++)
+			{
+				if (pg_strcasecmp(entry->name, tok) == 0)
+				{
+					defaultlevel = entry->val;
+					found = true;
+					break;
+				}
+			}
+
+			if (!found)
+			{
+				GUC_check_errdetail("Unrecognized log level: \"%s\".", tok);
+				goto lmm_fail;
+			}
+		}
+		else
+		{
+			char	   *loglevel;
+			char	   *ptype;
+			bool		found = false;
+			int			level;
+			const struct config_enum_entry *entry;
+
+			ptype = tok;
+			loglevel = sep + 1;
+			*sep = '\0';
+
+			/* Is the log level valid? */
+			for (entry = server_message_level_options; entry && entry->name; entry++)
+			{
+				if (pg_strcasecmp(entry->name, loglevel) == 0)
+				{
+					level = entry->val;
+					found = true;
+					break;
+				}
+			}
+
+			if (!found)
+			{
+				GUC_check_errdetail("Unrecognized log level for process type \"%s\": \"%s\".",
+									ptype, loglevel);
+				goto lmm_fail;
+			}
+
+			/* Is the process type name valid and unique? */
+			found = false;
+			for (int i = 0; i < BACKEND_NUM_TYPES; i++)
+			{
+				if (pg_strcasecmp(process_types[i], ptype) == 0)
+				{
+					/* Reject duplicates for a process type. */
+					if (assigned[i])
+					{
+						GUC_check_errdetail("Redundant log level specification for process type \"%s\".",
+											ptype);
+						goto lmm_fail;
+					}
+
+					newlevel[i] = level;
+					assigned[i] = true;
+					found = true;
+					break;
+				}
+			}
+
+			if (!found)
+			{
+				GUC_check_errdetail("Unrecognized process type: \"%s\".", ptype);
+				goto lmm_fail;
+			}
+
+			/* Put the separator back in place */
+			*sep = ':';
+		}
+
+		/* all good */
+		continue;
+
+lmm_fail:
+		guc_free(rawstring);
+		list_free(elemlist);
+		return false;
+	}
+
+	/*
+	 * The default log level must be specified. It is the fallback value.
+	 */
+	if (defaultlevel == -1)
+	{
+		GUC_check_errdetail("Default log level was not defined.");
+		guc_free(rawstring);
+		list_free(elemlist);
+		return false;
+	}
+
+	/*
+	 * Apply the default log level after all of the specific process types
+	 * have been assigned. Hence, it doesn't matter the order you specify the
+	 * default log level, the final result will be the same.
+	 */
+	for (int i = 0; i < BACKEND_NUM_TYPES; i++)
+	{
+		if (!assigned[i])
+			newlevel[i] = defaultlevel;
+	}
+
+	/*
+	 * To present a nice view to users, sort the output list by process type,
+	 * with the default value first.
+	 */
+	list_sort(elemlist, log_min_messages_cmp);
+
+	initStringInfoExt(&buf, strlen(rawstring) + 1);
+	foreach_ptr(char, tok, elemlist)
+	{
+		if (foreach_current_index(tok) == 0)
+			appendStringInfoString(&buf, tok);
+		else
+			appendStringInfo(&buf, ", %s", tok);
+	}
+
+	result = (char *) guc_malloc(LOG, buf.len + 1);
+	if (!result)
+		return false;
+	memcpy(result, buf.data, buf.len);
+	result[buf.len] = '\0';
+
+	guc_free(*newval);
+	*newval = result;
+
+	guc_free(rawstring);
+	list_free(elemlist);
+	pfree(buf.data);
+
+	/*
+	 * Pass back data for assign_log_min_messages to use.
+	 */
+	*extra = guc_malloc(LOG, BACKEND_NUM_TYPES * sizeof(int));
+	if (!*extra)
+		return false;
+	memcpy(*extra, newlevel, BACKEND_NUM_TYPES * sizeof(int));
+
+	return true;
+}
+
+/*
+ * list_sort() callback for check_log_min_messages.  The default element
+ * goes first; the rest are ordered by strcmp() of the process type.
+ */
+static int
+log_min_messages_cmp(const ListCell *a, const ListCell *b)
+{
+	const char *s = lfirst(a);
+	const char *t = lfirst(b);
+
+	if (strchr(s, ':') == NULL)
+		return -1;
+	else if (strchr(t, ':') == NULL)
+		return 1;
+	else
+		return strcmp(s, t);
+}
+
+/*
+ * GUC assign_hook for log_min_messages
+ */
+void
+assign_log_min_messages(const char *newval, void *extra)
+{
+	for (int i = 0; i < BACKEND_NUM_TYPES; i++)
+		log_min_messages[i] = ((int *) extra)[i];
 }
