@@ -639,6 +639,23 @@ char	   *role_string;
 /* should be static, but guc.c needs to get at this */
 bool		in_hot_standby_guc;
 
+/*
+ * log_min_messages
+ */
+int			log_min_messages[] = {
+#define PG_PROCTYPE(bktype, bkcategory, description, main_func, shmem_attach, log_min_messages) \
+	[bktype] = log_min_messages,
+#include "postmaster/proctypelist.h"
+#undef PG_PROCTYPE
+};
+
+const char *const log_min_messages_backend_types[] = {
+#define PG_PROCTYPE(bktype, bkcategory, description, main_func, shmem_attach, log_min_messages) \
+	[bktype] = bkcategory,
+#include "postmaster/proctypelist.h"
+#undef PG_PROCTYPE
+};
+
 
 /*
  * Displayable names for context types (enum GucContext)

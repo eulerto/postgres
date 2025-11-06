@@ -43,23 +43,6 @@
 #include "utils/varlena.h"
 
 /*
- * log_min_messages
- */
-int			log_min_messages[] = {
-#define PG_PROCTYPE(bktype, bkcategory, description, main_func, shmem_attach, log_min_messages) \
-	[bktype] = log_min_messages,
-#include "postmaster/proctypelist.h"
-#undef PG_PROCTYPE
-};
-
-const char *const log_min_messages_backend_types[] = {
-#define PG_PROCTYPE(bktype, bkcategory, description, main_func, shmem_attach, log_min_messages) \
-	[bktype] = bkcategory,
-#include "postmaster/proctypelist.h"
-#undef PG_PROCTYPE
-};
-
-/*
  * DATESTYLE
  */
 
