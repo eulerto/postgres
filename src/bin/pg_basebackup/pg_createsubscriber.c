@@ -1656,10 +1656,10 @@ start_standby_server(const struct CreateSubscriberOptions *opt, bool restricted_
 	pg_log_debug("pg_ctl command is: %s", pg_ctl_cmd->data);
 	if ((fp = popen(pg_ctl_cmd->data, "r")) == NULL)
 		pg_fatal("could not start server using %s: %m", pg_ctl_cmd->data);
-	while (fgets(cmd_output, sizeof(cmd_output), fp) == NULL)
+	while (fgets(cmd_output, sizeof(cmd_output), fp) != NULL)
 	{
 		(void) pg_strip_crlf(cmd_output);
-		printf("[SERVER] %s", cmd_output);
+		pg_log_info("[SERVER] %s", cmd_output);
 	}
 	rc = pclose(fp);
 	pg_ctl_status(pg_ctl_cmd->data, rc);
@@ -1681,10 +1681,10 @@ stop_standby_server(const char *datadir)
 	pg_log_debug("pg_ctl command is: %s", pg_ctl_cmd);
 	if ((fp = popen(pg_ctl_cmd, "r")) == NULL)
 		pg_fatal("could not stop server using %s: %m", pg_ctl_cmd);
-	while (fgets(cmd_output, sizeof(cmd_output), fp) == NULL)
+	while (fgets(cmd_output, sizeof(cmd_output), fp) != NULL)
 	{
 		(void) pg_strip_crlf(cmd_output);
-		printf("[SERVER] %s", cmd_output);
+		pg_log_info("[SERVER] %s", cmd_output);
 	}
 	rc = pclose(fp);
 	pg_ctl_status(pg_ctl_cmd, rc);
