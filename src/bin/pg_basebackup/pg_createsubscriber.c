@@ -24,6 +24,7 @@
 #include "common/logging.h"
 #include "common/pg_prng.h"
 #include "common/restricted_token.h"
+#include "common/string.h"
 #include "datatype/timestamp.h"
 #include "fe_utils/recovery_gen.h"
 #include "fe_utils/simple_list.h"
@@ -1653,8 +1654,8 @@ start_standby_server(const struct CreateSubscriberOptions *opt, bool restricted_
 		appendPQExpBufferStr(pg_ctl_cmd, " -o \"-c max_logical_replication_workers=0\"");
 
 	pg_log_debug("pg_ctl command is: %s", pg_ctl_cmd->data);
-	if ((fp = popen(pg_ctl_cmd, "r")) == NULL)
-		pg_fatal("could not start server using %s: %m", pg_ctl_cmd);
+	if ((fp = popen(pg_ctl_cmd->data, "r")) == NULL)
+		pg_fatal("could not start server using %s: %m", pg_ctl_cmd->data);
 	while (fgets(cmd_output, sizeof(cmd_output), fp) == NULL)
 	{
 		(void) pg_strip_crlf(cmd_output);
