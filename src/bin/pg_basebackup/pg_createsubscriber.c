@@ -1615,6 +1615,8 @@ start_standby_server(const struct CreateSubscriberOptions *opt, bool restricted_
 					 bool restrict_logical_worker)
 {
 	PQExpBuffer pg_ctl_cmd = createPQExpBuffer();
+	FILE	   *fp;
+	char		cmd_output[1024];
 	int			rc;
 
 	appendPQExpBuffer(pg_ctl_cmd, "\"%s\" start -D ", pg_ctl_path);
@@ -1651,7 +1653,14 @@ start_standby_server(const struct CreateSubscriberOptions *opt, bool restricted_
 		appendPQExpBufferStr(pg_ctl_cmd, " -o \"-c max_logical_replication_workers=0\"");
 
 	pg_log_debug("pg_ctl command is: %s", pg_ctl_cmd->data);
-	rc = system(pg_ctl_cmd->data);
+	if ((fp = popen(pg_ctl_cmd, "r")) == NULL)
+		pg_fatal("could not start server using %s: %m", pg_ctl_cmd);
+	while (fgets(cmd_output, sizeof(cmd_output), fp) == NULL)
+	{
+		(void) pg_strip_crlf(cmd_output);
+		printf("[SERVER] %s", cmd_output);
+	}
+	rc = pclose(fp);
 	pg_ctl_status(pg_ctl_cmd->data, rc);
 	standby_running = true;
 	destroyPQExpBuffer(pg_ctl_cmd);
@@ -1662,12 +1671,21 @@ static void
 stop_standby_server(const char *datadir)
 {
 	char	   *pg_ctl_cmd;
+	FILE	   *fp;
+	char		cmd_output[1024];
 	int			rc;
 
 	pg_ctl_cmd = psprintf("\"%s\" stop -D \"%s\" -s", pg_ctl_path,
 						  datadir);
 	pg_log_debug("pg_ctl command is: %s", pg_ctl_cmd);
-	rc = system(pg_ctl_cmd);
+	if ((fp = popen(pg_ctl_cmd, "r")) == NULL)
+		pg_fatal("could not stop server using %s: %m", pg_ctl_cmd);
+	while (fgets(cmd_output, sizeof(cmd_output), fp) == NULL)
+	{
+		(void) pg_strip_crlf(cmd_output);
+		printf("[SERVER] %s", cmd_output);
+	}
+	rc = pclose(fp);
 	pg_ctl_status(pg_ctl_cmd, rc);
 	standby_running = false;
 	pg_log_info("server was stopped");
