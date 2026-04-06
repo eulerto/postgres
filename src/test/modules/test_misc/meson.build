@@ -20,6 +20,9 @@ tests += {
       't/009_log_temp_files.pl',
       't/010_index_concurrently_upsert.pl',
       't/011_lock_stats.pl',
+      't/012_database_ddl.pl',
+      't/013_role_ddl.pl',
+      't/014_tablespace_ddl.pl',
     ],
     # The injection points are cluster-wide, so disable installcheck
     'runningcheck': false,
