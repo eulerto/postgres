@@ -34,7 +34,8 @@ typedef void (*shmem_startup_hook_type) (void);
  *
  * where the cleanup code is in a function declared per pg_on_exit_callback.
  * The Datum value "arg" can carry any information the cleanup function
- * needs.
+ * needs. If an optional argument is informed, the nested blocks use distinct
+ * variable names (avoid shadowing and keep the compiler quiet).
  *
  * This construct ensures that cleanup_function() will be called during
  * either ERROR or FATAL exits.  It will not be called on successful
@@ -44,20 +45,20 @@ typedef void (*shmem_startup_hook_type) (void);
  * Note: the macro arguments are multiply evaluated, so avoid side-effects.
  *----------
  */
-#define PG_ENSURE_ERROR_CLEANUP(cleanup_function, arg)	\
+#define PG_ENSURE_ERROR_CLEANUP(cleanup_function, arg, ...)	\
 	do { \
 		before_shmem_exit(cleanup_function, arg); \
-		PG_TRY()
+		PG_TRY(__VA_ARGS__)
 
-#define PG_END_ENSURE_ERROR_CLEANUP(cleanup_function, arg)	\
+#define PG_END_ENSURE_ERROR_CLEANUP(cleanup_function, arg, ...)	\
 		cancel_before_shmem_exit(cleanup_function, arg); \
-		PG_CATCH(); \
+		PG_CATCH(__VA_ARGS__); \
 		{ \
 			cancel_before_shmem_exit(cleanup_function, arg); \
 			cleanup_function (0, arg); \
 			PG_RE_THROW(); \
 		} \
-		PG_END_TRY(); \
+		PG_END_TRY(__VA_ARGS__); \
 	} while (0)
 
 
